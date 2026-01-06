@@ -1,0 +1,292 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.SideshellBridge = void 0;
+const crypto = __importStar(require("crypto"));
+const net = __importStar(require("net"));
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
+const os = __importStar(require("os"));
+const vscode = __importStar(require("vscode"));
+const terminal_manager_1 = require("./terminal-manager");
+/**
+ * Unix socket bridge server that exposes terminal control via JSON-RPC 2.0.
+ * Newline-delimited JSON protocol over Unix socket.
+ *
+ * Security (two layers):
+ *   1. Token auth - random token generated on start, written to port file (0600).
+ *      Client must send {"type":"auth","token":"..."} as first message.
+ *   2. User consent - persisted in settings (sideshell.allowAccess).
+ *      On first connection, a dialog asks the user to approve.
+ */
+class SideshellBridge {
+    server = null;
+    clients = new Set();
+    terminalManager;
+    _isRunning = false;
+    _token = '';
+    _approvalPending = false;
+    constructor() {
+        this.terminalManager = new terminal_manager_1.TerminalManager(10000);
+    }
+    get _approved() {
+        return vscode.workspace.getConfiguration('sideshell').get('allowAccess', false);
+    }
+    set _approved(value) {
+        vscode.workspace.getConfiguration('sideshell').update('allowAccess', value, true);
+    }
+    get isRunning() {
+        return this._isRunning;
+    }
+    get socketPath() {
+        return path.join(os.homedir(), '.sideshell', 'vscode.sock');
+    }
+    get portFilePath() {
+        return path.join(os.homedir(), '.sideshell', 'vscode-port');
+    }
+    start() {
+        if (this._isRunning) {
+            return;
+        }
+        this._token = crypto.randomBytes(32).toString('hex');
+        this._approvalPending = false;
+        // Clean up stale socket file
+        try {
+            fs.unlinkSync(this.socketPath);
+        }
+        catch { /* ok */ }
+        this.server = net.createServer((socket) => {
+            this.handleConnection(socket);
+        });
+        this.server.listen(this.socketPath, () => {
+            this._isRunning = true;
+            // Set socket file permissions to owner-only
+            try {
+                fs.chmodSync(this.socketPath, 0o600);
+            }
+            catch { /* ok */ }
+            this.writePortFile();
+            console.log(`sideshell bridge listening on ${this.socketPath}`);
+        });
+        this.server.on('error', (err) => {
+            console.error('sideshell bridge error:', err);
+        });
+    }
+    handleConnection(socket) {
+        let authenticated = false;
+        let buffer = '';
+        socket.on('data', async (data) => {
+            buffer += data.toString();
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ''; // Keep incomplete line in buffer
+            for (const line of lines) {
+                if (!line.trim()) {
+                    continue;
+                }
+                try {
+                    const msg = JSON.parse(line);
+                    // First message must be auth handshake
+                    if (!authenticated) {
+                        if (msg.type === 'auth' && msg.token === this._token) {
+                            authenticated = true;
+                            this.clients.add(socket);
+                            console.log('sideshell: client connected (token valid)');
+                            socket.write(JSON.stringify({ ok: true }) + '\n');
+                            if (!this._approved) {
+                                this.requestApproval(socket);
+                            }
+                        }
+                        else {
+                            console.warn('sideshell: rejected connection — invalid token');
+                            socket.write(JSON.stringify({ ok: false, error: 'invalid token' }) + '\n');
+                            socket.destroy();
+                        }
+                        continue;
+                    }
+                    // Authenticated — handle JSON-RPC request
+                    if (!this._approved) {
+                        socket.write(JSON.stringify({
+                            jsonrpc: '2.0',
+                            id: msg.id,
+                            error: {
+                                code: -32001,
+                                message: 'Waiting for user approval in IDE. '
+                                    + 'Please click "Allow" in the notification.',
+                            },
+                        }) + '\n');
+                        continue;
+                    }
+                    const response = await this.handleRequest(msg);
+                    socket.write(JSON.stringify(response) + '\n');
+                }
+                catch (e) {
+                    socket.write(JSON.stringify({
+                        jsonrpc: '2.0',
+                        id: null,
+                        error: { code: -32700, message: `Parse error: ${e.message}` },
+                    }) + '\n');
+                }
+            }
+        });
+        socket.on('close', () => {
+            this.clients.delete(socket);
+            console.log('sideshell: client disconnected');
+        });
+        socket.on('error', (err) => {
+            this.clients.delete(socket);
+            console.error('sideshell: socket error:', err.message);
+        });
+    }
+    async requestApproval(socket) {
+        if (this._approvalPending) {
+            return;
+        }
+        this._approvalPending = true;
+        const choice = await vscode.window.showWarningMessage('Sideshell wants to access your IDE terminals. '
+            + 'This allows an MCP client to read terminal output and execute commands.', { modal: false }, 'Allow', 'Deny');
+        this._approvalPending = false;
+        if (choice === 'Allow') {
+            this._approved = true;
+            console.log('sideshell: user approved terminal access');
+            vscode.window.showInformationMessage('Sideshell terminal access granted.');
+        }
+        else {
+            console.log('sideshell: user denied terminal access');
+            this._token = crypto.randomBytes(32).toString('hex');
+            this.writePortFile();
+            socket.destroy();
+        }
+    }
+    stop() {
+        this._isRunning = false;
+        this._token = '';
+        for (const client of this.clients) {
+            client.destroy();
+        }
+        this.clients.clear();
+        if (this.server) {
+            this.server.close();
+            this.server = null;
+        }
+        this.removePortFile();
+        // Clean up socket file
+        try {
+            fs.unlinkSync(this.socketPath);
+        }
+        catch { /* ok */ }
+        this.terminalManager.dispose();
+    }
+    async handleRequest(request) {
+        const { id, method, params } = request;
+        try {
+            const result = await this.dispatch(method, params || {});
+            return { jsonrpc: '2.0', id, result };
+        }
+        catch (e) {
+            return {
+                jsonrpc: '2.0',
+                id,
+                error: { code: -32603, message: e.message || 'Internal error' },
+            };
+        }
+    }
+    async dispatch(method, params) {
+        switch (method) {
+            case 'list_sessions':
+                return this.terminalManager.listSessions();
+            case 'read_terminal':
+                return this.terminalManager.readOutput(params.session_id || null, params.lines || 20);
+            case 'send_text':
+                return this.terminalManager.sendText(params.session_id || null, params.text || '');
+            case 'execute_command':
+                return this.terminalManager.executeCommand(params.session_id || null, params.command || '', params.wait || false, params.timeout || 30, params.watch_for || 'prompt');
+            case 'send_control':
+                return this.terminalManager.sendControl(params.session_id || null, params.key || '');
+            case 'split_pane':
+                return await this.terminalManager.splitPane(params.session_id || null, params.direction || 'v');
+            case 'create_tab':
+                return await this.terminalManager.createTab(params.profile, params.command);
+            case 'create_window':
+                return await this.terminalManager.createWindow(params.profile, params.command);
+            case 'focus_session':
+                return this.terminalManager.focusSession(params.session_id);
+            case 'close_session':
+                return this.terminalManager.closeSession(params.session_id || null);
+            case 'clear_terminal':
+                return this.terminalManager.clearTerminal(params.session_id || null);
+            case 'get_terminal_state':
+                return this.terminalManager.getTerminalState(params.session_id || null);
+            case 'set_appearance':
+                return this.terminalManager.setAppearance(params.session_id || null, params.title, params.color, params.badge);
+            case 'get_active_session':
+                return { session_id: this.terminalManager.getActiveSessionId() };
+            case 'is_ai_session':
+                return this.terminalManager.isAiSession(params.session_id);
+            default:
+                throw new Error(`Unknown method: ${method}`);
+        }
+    }
+    writePortFile() {
+        try {
+            const dir = path.dirname(this.portFilePath);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+            }
+            const data = JSON.stringify({
+                socket: this.socketPath,
+                pid: process.pid,
+                token: this._token,
+                ide: 'vscode',
+                version: '0.3.0',
+            });
+            fs.writeFileSync(this.portFilePath, data, { mode: 0o600 });
+        }
+        catch (e) {
+            console.error('Failed to write port file:', e);
+        }
+    }
+    removePortFile() {
+        try {
+            if (fs.existsSync(this.portFilePath)) {
+                fs.unlinkSync(this.portFilePath);
+            }
+        }
+        catch (e) {
+            console.debug('Failed to remove port file:', e);
+        }
+    }
+}
+exports.SideshellBridge = SideshellBridge;
+//# sourceMappingURL=bridge.js.map
