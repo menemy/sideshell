@@ -212,13 +212,25 @@ class TerminalManager {
         if (!parent) {
             throw new Error(`Terminal not found: ${terminalId}`);
         }
-        const newTerminal = vscode.window.createTerminal({
-            location: { parentTerminal: parent },
-        });
-        newTerminal.show();
-        // Wait briefly for terminal to initialize
+        // Strategy: use workbench.action.terminal.split for panel-level splits.
+        // This creates a new terminal in the same group as the parent.
+        // Note: Cursor renders grouped terminals as tabs within the group,
+        // not as visual side-by-side panes. This is a Cursor limitation.
+        // 1. Focus the parent terminal so the split targets it
+        parent.show(false);
+        await new Promise(resolve => setTimeout(resolve, 300));
+        const terminalsBefore = new Set(vscode.window.terminals);
+        // 2. Split via command (works in both VSCode and Cursor)
+        await vscode.commands.executeCommand('workbench.action.terminal.split');
         await new Promise(resolve => setTimeout(resolve, 500));
-        return { new_session_id: this.getTerminalId(newTerminal) };
+        // 3. Detect the newly created terminal
+        const newTerminal = vscode.window.terminals.find(t => !terminalsBefore.has(t));
+        if (!newTerminal) {
+            throw new Error('Split command executed but no new terminal detected');
+        }
+        const newId = this.getTerminalId(newTerminal);
+        console.log(`sideshell: split created "${newTerminal.name}" (${newId}), direction=${direction}`);
+        return { new_session_id: newId };
     }
     async createTab(profile, command) {
         const options = {};

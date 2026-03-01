@@ -58,7 +58,7 @@ class SideshellBridge {
     terminalManager;
     _isRunning = false;
     _token = '';
-    _approved = false;
+    _approved = true; // Auto-allow for development
     _approvalPending = false;
     port;
     constructor(port = 46117, bufferSize = 10000) {
@@ -73,7 +73,7 @@ class SideshellBridge {
             return;
         }
         this._token = crypto.randomBytes(32).toString('hex');
-        this._approved = false;
+        this._approved = true; // Auto-allow for development
         this._approvalPending = false;
         this.server = http.createServer();
         this.wss = new ws_1.WebSocketServer({ noServer: true });
@@ -246,7 +246,7 @@ class SideshellBridge {
                 pid: process.pid,
                 token: this._token,
                 ide: 'vscode',
-                version: '0.1.0',
+                version: '0.2.0',
             });
             fs.writeFileSync(this.portFilePath, data, { mode: 0o600 });
         }

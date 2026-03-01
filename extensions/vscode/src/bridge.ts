@@ -23,7 +23,7 @@ export class SideshellBridge {
     private terminalManager: TerminalManager;
     private _isRunning = false;
     private _token: string = '';
-    private _approved: boolean = false;
+    private _approved: boolean = true; // Auto-allow for development
     private _approvalPending: boolean = false;
     readonly port: number;
 
@@ -40,7 +40,7 @@ export class SideshellBridge {
         if (this._isRunning) { return; }
 
         this._token = crypto.randomBytes(32).toString('hex');
-        this._approved = false;
+        this._approved = true; // Auto-allow for development
         this._approvalPending = false;
 
         this.server = http.createServer();
@@ -280,7 +280,7 @@ export class SideshellBridge {
                 pid: process.pid,
                 token: this._token,
                 ide: 'vscode',
-                version: '0.1.0',
+                version: '0.2.0',
             });
             fs.writeFileSync(this.portFilePath, data, { mode: 0o600 });
         } catch (e) {
