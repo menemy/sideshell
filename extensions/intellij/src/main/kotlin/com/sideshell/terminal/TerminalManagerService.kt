@@ -320,44 +320,8 @@ class TerminalManagerService {
             if (after.size > beforeCount) break
         }
 
-        // For new terminal: move the new tab into a visual split pane
-        // using tool window split actions (TW.SplitAndMoveRight / TW.SplitAndMoveDown).
-        if (isNewTerminal && after.size > beforeCount) {
-            val splitActionLatch = CountDownLatch(1)
-            ApplicationManager.getApplication().invokeLater {
-                try {
-                    val newTerminalContent = after.last().content
-                    if (newTerminalContent != null) {
-                        // Select the new tab so the split action moves it
-                        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("Terminal")
-                        val cm = toolWindow?.contentManager
-                        if (cm != null) {
-                            cm.setSelectedContent(newTerminalContent, true)
-
-                            // Use TW.SplitAndMoveRight/Down to move the selected tab into a split
-                            val actionId = if (vertically) "TW.SplitAndMoveRight" else "TW.SplitAndMoveDown"
-                            val action = ActionManager.getInstance().getAction(actionId)
-                            if (action != null) {
-                                val dataContext = SimpleDataContext.builder()
-                                    .add(PlatformDataKeys.TOOL_WINDOW, toolWindow)
-                                    .build()
-                                val event = AnActionEvent.createFromAnAction(
-                                    action, null, "sideshell", dataContext
-                                )
-                                action.actionPerformed(event)
-                                log.info("sideshell: executed $actionId for visual split")
-                            } else {
-                                log.info("sideshell: action $actionId not found, no visual split")
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    log.warn("sideshell: visual split action failed: ${e.message}", e)
-                }
-                splitActionLatch.countDown()
-            }
-            splitActionLatch.await(5, TimeUnit.SECONDS)
-        }
+        // Note: Visual split panes are not supported for the new terminal engine
+        // (IntelliJ 2025.3+). Splits create new tabs instead.
 
         val newId = if (after.size > beforeCount) {
             after.last().id
@@ -366,66 +330,6 @@ class TerminalManagerService {
         }
         log.info("sideshell: split result: afterCount=${after.size} newId=$newId")
         return mapOf("new_session_id" to newId)
-    }
-
-    /**
-     * Rearrange: move the last tab's terminal component into a Splitter
-     * inside the original tab's content. This creates a visual split pane
-     * within a single tab. Must be called on EDT.
-     *
-     * Splitter orientation: !vertically because:
-     *   vertically=true  (split right, side by side) → Splitter(false)
-     *   vertically=false (split down, top/bottom)    → Splitter(true)
-     */
-    private fun rearrangeIntoSplitter(
-        project: Project,
-        originalContent: Content,
-        vertically: Boolean,
-    ) {
-        val tabs = newApi.getTabs(project)
-        if (tabs.isEmpty()) {
-            log.warn("sideshell: rearrange — no tabs found")
-            return
-        }
-
-        val newTab = tabs.last()
-        val newContent = newApi.getTabContent(newTab)
-        val newComponent = newContent?.component
-        val originalComponent = originalContent.component
-
-        if (originalComponent !is javax.swing.JComponent || newComponent !is javax.swing.JComponent) {
-            log.warn("sideshell: rearrange — components are null or not JComponent")
-            return
-        }
-
-        log.info("sideshell: rearranging into Splitter: original=${originalComponent.javaClass.simpleName}, new=${newComponent.javaClass.simpleName}")
-
-        // Remove new component from its parent (the new tab's content area)
-        newComponent.parent?.remove(newComponent)
-
-        // Create Splitter
-        val splitter = com.intellij.openapi.ui.Splitter(!vertically)
-        splitter.proportion = 0.5f
-        splitter.firstComponent = originalComponent
-        splitter.secondComponent = newComponent
-
-        // Replace the original tab's content with the Splitter
-        originalContent.component = splitter
-
-        // Remove the now-empty new tab's content from its ContentManager
-        if (newContent != null) {
-            try {
-                newContent.manager?.removeContent(newContent, false)
-                log.info("sideshell: removed empty new content from ContentManager")
-            } catch (e: Exception) {
-                log.debug("sideshell: couldn't remove new content: ${e.message}")
-            }
-        }
-
-        // Revalidate UI
-        splitter.revalidate()
-        splitter.repaint()
-        log.info("sideshell: rearranged into Splitter(!vertically=${!vertically}) done")
     }
 
     fun createTab(profile: String?, command: String?): Map<String, String> {
