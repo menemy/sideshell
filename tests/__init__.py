@@ -1,0 +1,1 @@
+"""Tests for native-iterm2-mcp."""

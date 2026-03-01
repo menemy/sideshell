@@ -1,0 +1,104 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sideshell-mcp"
+version = "1.0.0"
+description = "AI sidecar terminal - let Claude/Cursor run commands in a visible, persistent terminal you control"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    { name = "sideshell contributors" }
+]
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "iterm2",
+    "tmux",
+    "wezterm",
+    "kitty",
+    "terminal",
+    "sidecar",
+    "claude",
+    "cursor",
+    "ai",
+    "llm",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Shells",
+    "Topic :: Terminals :: Terminal Emulators/X Terminals",
+    "Typing :: Typed",
+]
+dependencies = [
+    "mcp>=1.14.0",
+    "iterm2>=2.7",
+    "websockets>=12.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/anthropics/sideshell"
+Documentation = "https://github.com/anthropics/sideshell#readme"
+Repository = "https://github.com/anthropics/sideshell"
+Issues = "https://github.com/anthropics/sideshell/issues"
+Changelog = "https://github.com/anthropics/sideshell/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.13.0",
+    "mypy>=1.0.0",
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+]
+
+[project.scripts]
+sideshell-mcp = "sideshell_mcp.server:main"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "ASYNC", # flake8-async
+    "ANN",  # flake8-annotations
+    "RUF",  # ruff specific rules
+]
+ignore = [
+    "ANN101",  # missing type annotation for self
+    "ANN102",  # missing type annotation for cls
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_unimported = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "iterm2.*"
+ignore_missing_imports = true

@@ -1,0 +1,34 @@
+<idea-plugin>
+    <id>com.sideshell.terminal</id>
+    <name>sideshell Terminal Control</name>
+    <vendor url="https://github.com/anthropics/sideshell">sideshell</vendor>
+
+    <description><![CDATA[
+    Exposes JetBrains IDE terminal control for AI agents via sideshell MCP server.
+    <br/><br/>
+    Provides a WebSocket bridge that lets sideshell control IDE terminals:
+    read output, execute commands, create tabs/splits, and more.
+    <br/><br/>
+    Works with all JetBrains IDEs: IntelliJ IDEA, PyCharm, WebStorm, GoLand,
+    RustRover, PhpStorm, Android Studio, etc.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>org.jetbrains.plugins.terminal</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <postStartupActivity
+            implementation="com.sideshell.terminal.SideshellStartupActivity"/>
+        <applicationConfigurable
+            parentId="tools"
+            instance="com.sideshell.terminal.SideshellConfigurable"
+            id="com.sideshell.terminal.settings"
+            displayName="sideshell Terminal"/>
+    </extensions>
+
+    <applicationListeners>
+        <listener
+            class="com.sideshell.terminal.SideshellAppLifecycleListener"
+            topic="com.intellij.ide.AppLifecycleListener"/>
+    </applicationListeners>
+</idea-plugin>
