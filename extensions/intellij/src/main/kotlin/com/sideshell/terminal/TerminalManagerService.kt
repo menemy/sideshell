@@ -226,100 +226,37 @@ class TerminalManagerService {
                     return@invokeLater
                 }
 
-                // === Strategy 1: Classic terminal — use JBTerminalWidgetListener.split() ===
-                if (info?.widget != null) {
-                    toolWindow.show {
-                        try {
-                            val listener = info.widget.listener
-                            if (listener != null && listener.canSplit(vertically)) {
-                                log.info("sideshell: using JBTerminalWidgetListener.split(vertically=$vertically)")
-                                listener.split(vertically)
-                                log.info("sideshell: terminal split via listener succeeded")
-                            } else {
-                                log.info("sideshell: listener=${listener != null}, canSplit=${listener?.canSplit(vertically)}")
-                            }
-                        } catch (e: Exception) {
-                            log.warn("sideshell: listener.split failed: ${e.message}", e)
-                        }
-                        latch.countDown()
-                    }
-                    return@invokeLater
+                // === Strategy 1 (primary): TW.SplitRight/Down via activate() ===
+                // Works for BOTH new and classic terminals. Creates a visual split
+                // pane with a new terminal session tracked by the tab manager.
+                // activate() ensures the tool window gets focus (required for TW.Split).
+                // Select the target content before activating
+                val cm = info?.content?.manager
+                if (cm != null && info?.content != null) {
+                    cm.setSelectedContent(info.content, true)
                 }
 
-                // === Strategy 2: New terminal — use TW.SplitRight/Down via activate() ===
-                // activate() ensures the tool window gets focus (unlike show() which just
-                // makes it visible). TW.SplitRight/Down need focus on the terminal to work.
-                // We use autoFocusContents=true so IntelliJ focuses the terminal content.
-                if (isNewTerminal) {
-                    // Select the target content before activating
-                    val cm = info?.content?.manager
-                    if (cm != null && info?.content != null) {
-                        cm.setSelectedContent(info.content, true)
-                    }
-
-                    toolWindow.activate({
-                        try {
-                            val actionId = if (vertically) "TW.SplitRight" else "TW.SplitDown"
-                            val action = ActionManager.getInstance().getAction(actionId)
-                            if (action != null) {
-                                // Get DataContext from the terminal component (NOT focusOwner
-                                // which may still be MyProjectViewTree due to async focus)
-                                val targetComponent = info?.content?.component ?: toolWindow.component
-                                val dataContext = DataManager.getInstance().getDataContext(targetComponent)
-                                val event = AnActionEvent.createFromAnAction(
-                                    action, null, "sideshell", dataContext
-                                )
-                                action.actionPerformed(event)
-                                val fo = IdeFocusManager.getInstance(project).focusOwner
-                                log.info("sideshell: executed $actionId via activate (focusOwner=${fo?.javaClass?.simpleName}, targetComponent=${targetComponent.javaClass.simpleName})")
-                            } else {
-                                log.warn("sideshell: action $actionId not found")
-                            }
-                        } catch (e: Exception) {
-                            log.warn("sideshell: TW.Split action failed: ${e.message}", e)
-                        }
-                        latch.countDown()
-                    }, true) // autoFocusContents = true
-                    return@invokeLater
-                }
-
-                // === Strategy 3: UIUtil fallback (no widget/newView) ===
-                toolWindow.show {
-                    var splitDone = false
+                toolWindow.activate({
                     try {
-                        val frame = WindowManager.getInstance().getFrame(project)
-                        if (frame != null) {
-                            val widgets = UIUtil.findComponentsOfType(
-                                frame.rootPane as javax.swing.JComponent,
-                                ShellTerminalWidget::class.java,
+                        val actionId = if (vertically) "TW.SplitRight" else "TW.SplitDown"
+                        val action = ActionManager.getInstance().getAction(actionId)
+                        if (action != null) {
+                            val targetComponent = info?.content?.component ?: toolWindow.component
+                            val dataContext = DataManager.getInstance().getDataContext(targetComponent)
+                            val event = AnActionEvent.createFromAnAction(
+                                action, null, "sideshell", dataContext
                             )
-                            log.info("sideshell: UIUtil found ${widgets.size} widgets for split")
-                            for (widget in widgets) {
-                                try {
-                                    val listener = widget.listener
-                                    if (listener != null && listener.canSplit(vertically)) {
-                                        log.info("sideshell: using UIUtil widget listener.split")
-                                        listener.split(vertically)
-                                        splitDone = true
-                                        break
-                                    }
-                                } catch (e: Exception) {
-                                    log.debug("sideshell: UIUtil widget split failed: ${e.message}")
-                                }
-                            }
+                            action.actionPerformed(event)
+                            val fo = IdeFocusManager.getInstance(project).focusOwner
+                            log.info("sideshell: executed $actionId via activate (focusOwner=${fo?.javaClass?.simpleName}, targetComponent=${targetComponent.javaClass.simpleName})")
+                        } else {
+                            log.warn("sideshell: action $actionId not found")
                         }
                     } catch (e: Exception) {
-                        log.warn("sideshell: UIUtil split failed: ${e.message}", e)
-                    }
-
-                    // === Strategy 4: Fallback — create a new tab ===
-                    if (!splitDone) {
-                        log.info("sideshell: split not supported, creating new tab as fallback")
-                        val manager = TerminalToolWindowManager.getInstance(project)
-                        manager.createLocalShellWidget(project.basePath ?: ".", "sideshell")
+                        log.warn("sideshell: TW.Split action failed: ${e.message}", e)
                     }
                     latch.countDown()
-                }
+                }, true) // autoFocusContents = true
             } catch (e: Exception) {
                 log.warn("sideshell: split failed: ${e.message}", e)
                 latch.countDown()
