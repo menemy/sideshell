@@ -600,7 +600,10 @@ def parse_args() -> argparse.Namespace:
         "--backend",
         "-b",
         type=str,
-        choices=["auto", "iterm2", "tmux", "wezterm", "kitty", "ghostty", "vscode", "intellij"],
+        choices=[
+            "auto", "iterm2", "tmux", "wezterm", "kitty",
+            "ghostty", "maquake", "vscode", "intellij",
+        ],
         default="auto",
         help="Terminal backend to use (default: auto-detect)",
     )
@@ -653,6 +656,7 @@ def main() -> None:
         "wezterm": BackendType.WEZTERM,
         "kitty": BackendType.KITTY,
         "ghostty": BackendType.GHOSTTY,
+        "maquake": BackendType.MAQUAKE,
         "vscode": BackendType.VSCODE,
         "intellij": BackendType.INTELLIJ,
     }

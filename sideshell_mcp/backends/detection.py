@@ -110,6 +110,11 @@ def detect_parent_process() -> BackendType | None:
                     logger.info("Parent process detected: Ghostty")
                     return BackendType.GHOSTTY
 
+                # Check for maquake
+                if "maquake" in comm:
+                    logger.info("Parent process detected: maquake")
+                    return BackendType.MAQUAKE
+
                 pid = ppid
             except (ValueError, subprocess.TimeoutExpired):
                 break
@@ -327,6 +332,19 @@ def detect_kitty() -> bool:
     return False
 
 
+def detect_maquake() -> bool:
+    """Check if maquake is available.
+
+    Detection methods:
+    1. Check if /tmp/maquake.sock exists
+    """
+    if os.path.exists("/tmp/maquake.sock"):
+        logger.debug("maquake detected via socket file")
+        return True
+
+    return False
+
+
 def detect_windows_terminal() -> bool:
     """Check if Windows Terminal is available.
 
@@ -461,6 +479,11 @@ def detect_backend() -> BackendType:
         logger.info("Auto-detected backend: Ghostty")
         return BackendType.GHOSTTY
 
+    # Check for maquake
+    if detect_maquake():
+        logger.info("Auto-detected backend: maquake")
+        return BackendType.MAQUAKE
+
     # Check for tmux
     if detect_tmux():
         logger.info("Auto-detected backend: tmux")
@@ -548,6 +571,17 @@ def get_backend(backend_type: BackendType = BackendType.AUTO) -> TerminalBackend
             "Please install tmux: brew install tmux"
         )
 
+    elif backend_type == BackendType.MAQUAKE:
+        from .maquake_backend import MaQuakeBackend
+
+        backend = MaQuakeBackend()
+        if not backend.is_available:
+            raise ValueError(
+                "maquake backend requested but not available. "
+                "maquake must be running (socket at /tmp/maquake.sock)"
+            )
+        return backend
+
     elif backend_type == BackendType.VSCODE:
         from .vscode_backend import VSCodeBackend
 
@@ -585,6 +619,9 @@ def list_available_backends() -> list[BackendType]:
     if detect_ghostty():
         available.append(BackendType.GHOSTTY)
 
+    if detect_maquake():
+        available.append(BackendType.MAQUAKE)
+
     if detect_vscode():
         available.append(BackendType.VSCODE)
 
@@ -611,6 +648,7 @@ def get_system_info() -> dict:
         "wezterm": detect_wezterm(),
         "kitty": detect_kitty(),
         "ghostty": detect_ghostty(),
+        "maquake": detect_maquake(),
         "vscode": detect_vscode(),
         "intellij": detect_intellij(),
         "windows_terminal": detect_windows_terminal() if system == "Windows" else False,
@@ -627,6 +665,7 @@ def get_system_info() -> dict:
             BackendType.WEZTERM: "WezTerm",
             BackendType.KITTY: "Kitty",
             BackendType.GHOSTTY: "Ghostty",
+            BackendType.MAQUAKE: "maquake",
             BackendType.VSCODE: "VS Code",
             BackendType.INTELLIJ: "JetBrains IDE",
         }
@@ -685,6 +724,7 @@ def print_startup_info() -> str:
             "wezterm": "WezTerm",
             "kitty": "Kitty",
             "ghostty": "Ghostty",
+            "maquake": "maquake",
             "vscode": "VS Code",
             "intellij": "JetBrains IDE",
             "windows_terminal": "Windows Terminal",

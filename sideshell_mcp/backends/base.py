@@ -16,6 +16,7 @@ class BackendType(str, Enum):
     WEZTERM = "wezterm"
     KITTY = "kitty"
     GHOSTTY = "ghostty"
+    MAQUAKE = "maquake"
     VSCODE = "vscode"
     INTELLIJ = "intellij"
     AUTO = "auto"

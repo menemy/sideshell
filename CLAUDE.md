@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-**sideshell** is an AI sidecar terminal - an MCP server that lets Claude/Cursor run commands in a visible, persistent terminal. Cross-platform with pluggable backends (iTerm2, tmux, WezTerm, Kitty).
+**sideshell** is an AI sidecar terminal - an MCP server that lets Claude/Cursor run commands in a visible, persistent terminal. Cross-platform with pluggable backends (iTerm2, tmux, WezTerm, Kitty, maquake).
 
 ## Commands
 
@@ -16,6 +16,7 @@ This file provides guidance to Claude Code when working with this repository.
 ### Testing
 - `python tests/test_iterm2_backend.py` - Run iTerm2 backend tests
 - `python tests/test_tmux_backend.py` - Run tmux backend tests
+- `uv run python tests/test_maquake_backend.py` - Run maquake backend tests (requires maquake running)
 - `pytest` - Run all pytest-based tests
 
 ### Linting & Formatting
@@ -30,11 +31,12 @@ This file provides guidance to Claude Code when working with this repository.
 sideshell_mcp/
 ├── server.py           # MCP server with 17 tools
 ├── backends/
-│   ├── base.py         # Abstract base class, ControlKey enum
+│   ├── base.py             # Abstract base class, ControlKey enum
 │   ├── iterm2_backend.py   # iTerm2 Python API backend
 │   ├── tmux_backend.py     # tmux subprocess backend
-│   ├── wezterm_backend.py  # WezTerm (planned)
-│   └── kitty_backend.py    # Kitty (planned)
+│   ├── maquake_backend.py  # maquake Unix socket backend
+│   ├── wezterm_backend.py  # WezTerm
+│   └── kitty_backend.py    # Kitty
 ```
 
 ### Backend Pattern
@@ -56,4 +58,5 @@ Special keys in `base.py`:
 - Python 3.11+ required
 - Uses `iterm2` package for iTerm2 Python API
 - tmux backend uses subprocess calls
+- maquake backend uses Unix domain socket at `/tmp/maquake.sock` (JSON request/response)
 - All backends support wait/timeout for command completion
