@@ -74,22 +74,27 @@ class TmuxBackend(TerminalBackend):
         return stdout
 
     async def connect(self) -> bool:
-        """Check tmux server is running."""
+        """Connect to tmux, auto-creating a 'sideshell' session if none exist."""
         try:
-            code, _, _ = await self._run_tmux("list-sessions")
-            if code == 0:
+            code, stdout, _ = await self._run_tmux("list-sessions")
+            if code == 0 and stdout.strip():
                 self._connected = True
-                logger.info("Successfully connected to tmux")
+                logger.info("Connected to existing tmux session")
                 return True
 
-            # Try to start tmux server
-            code, _, stderr = await self._run_tmux("start-server")
+            # No sessions — create one so sideshell has something to work with
+            code, _, stderr = await self._run_tmux(
+                "new-session", "-d", "-s", "sideshell",
+            )
             if code != 0:
-                logger.error(f"Failed to start tmux server: {stderr}")
+                logger.error(f"Failed to create tmux session: {stderr}")
                 return False
 
             self._connected = True
-            logger.info("Started tmux server")
+            logger.info(
+                "Created tmux session 'sideshell'. "
+                "Watch in a new tab: tmux attach -t sideshell"
+            )
             return True
         except Exception as e:
             logger.error(f"Failed to connect to tmux: {e}")

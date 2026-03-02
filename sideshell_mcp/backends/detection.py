@@ -515,7 +515,13 @@ def get_backend(backend_type: BackendType = BackendType.AUTO) -> TerminalBackend
         backend_type = detect_backend()
 
     if backend_type == BackendType.ITERM2:
-        from .iterm2_backend import ITermBackend
+        try:
+            from .iterm2_backend import ITermBackend
+        except ImportError:
+            raise ValueError(
+                "iTerm2 backend requires the iterm2 package. "
+                "Install with: pip install sideshell-mcp[iterm2]"
+            ) from None
 
         backend = ITermBackend()
         if not backend.is_available:
@@ -559,15 +565,13 @@ def get_backend(backend_type: BackendType = BackendType.AUTO) -> TerminalBackend
         return backend
 
     elif backend_type == BackendType.GHOSTTY:
-        # Ghostty doesn't have a native API yet, fallback to tmux if available
-        logger.info("Ghostty detected - using tmux backend as bridge (Ghostty has no API yet)")
-        from .tmux_backend import TmuxBackend
+        from .ghostty_backend import GhosttyBackend
 
-        backend = TmuxBackend()
+        backend = GhosttyBackend()
         if backend.is_available:
             return backend
         raise ValueError(
-            "Ghostty backend requires tmux as a bridge (Ghostty has no terminal API). "
+            "Ghostty backend requires tmux. "
             "Please install tmux: brew install tmux"
         )
 

@@ -4,12 +4,13 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-**sideshell** is an AI sidecar terminal - an MCP server that lets Claude/Cursor run commands in a visible, persistent terminal. Cross-platform with pluggable backends (iTerm2, tmux, WezTerm, Kitty, maquake).
+**sideshell** is an AI sidecar terminal - an MCP server that lets Claude/Cursor run commands in a visible, persistent terminal. Cross-platform with pluggable backends (iTerm2, tmux, Ghostty, WezTerm, Kitty, maquake).
 
 ## Commands
 
 ### Development
-- `uv pip install -e .` - Install in development mode
+- `uv pip install -e .` - Install in development mode (minimal: tmux/ghostty/kitty/wezterm/maquake)
+- `uv pip install -e ".[all]"` - Install with all optional deps (iTerm2 + IDE backends)
 - `python -m sideshell_mcp.server` - Run the MCP server directly
 - `uvx sideshell-mcp` - Run via uvx (after publishing)
 
@@ -34,6 +35,7 @@ sideshell_mcp/
 │   ├── base.py             # Abstract base class, ControlKey enum
 │   ├── iterm2_backend.py   # iTerm2 Python API backend
 │   ├── tmux_backend.py     # tmux subprocess backend
+│   ├── ghostty_backend.py  # Ghostty (via tmux)
 │   ├── maquake_backend.py  # maquake Unix socket backend
 │   ├── wezterm_backend.py  # WezTerm
 │   └── kitty_backend.py    # Kitty
@@ -54,9 +56,16 @@ Special keys in `base.py`:
 - Function keys: f1-f12
 - Other: enter, esc, tab, backspace, insert, delete
 
+### Dependencies
+- Core: only `mcp>=1.14.0` — zero extra deps for tmux/ghostty/kitty/wezterm/maquake/vscode/intellij
+- Optional `[iterm2]`: `iterm2>=2.7` — for iTerm2 backend
+- IDE backends use Unix sockets (stdlib) — no extra packages needed
+
 ### Development Notes
 - Python 3.11+ required
-- Uses `iterm2` package for iTerm2 Python API
-- tmux backend uses subprocess calls
+- tmux, kitty, wezterm backends use subprocess calls (stdlib only)
+- Ghostty backend wraps TmuxBackend (Ghostty has no terminal API on macOS)
 - maquake backend uses Unix domain socket at `/tmp/maquake.sock` (JSON request/response)
+- iTerm2 backend requires `iterm2` package (`pip install sideshell-mcp[iterm2]`)
+- IDE backends use Unix sockets at `~/.sideshell/<ide>.sock` (stdlib, no extra packages)
 - All backends support wait/timeout for command completion
