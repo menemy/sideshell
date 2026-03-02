@@ -854,30 +854,34 @@ name = "sideshell-mcp"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [
-    { name = "iterm2" },
     { name = "mcp" },
-    { name = "websockets" },
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "iterm2" },
+]
 dev = [
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
 ]
+iterm2 = [
+    { name = "iterm2" },
+]
 
 [package.metadata]
 requires-dist = [
-    { name = "iterm2", specifier = ">=2.7" },
+    { name = "iterm2", marker = "extra == 'all'", specifier = ">=2.7" },
+    { name = "iterm2", marker = "extra == 'iterm2'", specifier = ">=2.7" },
     { name = "mcp", specifier = ">=1.14.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.13.0" },
-    { name = "websockets", specifier = ">=12.0" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["iterm2", "all", "dev"]
 
 [[package]]
 name = "sse-starlette"

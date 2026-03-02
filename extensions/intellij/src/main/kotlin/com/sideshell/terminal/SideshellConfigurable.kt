@@ -5,42 +5,24 @@ import javax.swing.*
 
 class SideshellConfigurable : Configurable {
     private var panel: JPanel? = null
-    private var portField: JSpinner? = null
-    private var autoStartCheckbox: JCheckBox? = null
-    private var bufferSizeField: JSpinner? = null
+    private var approvedCheckbox: JCheckBox? = null
 
-    override fun getDisplayName(): String = "sideshell Terminal"
+    override fun getDisplayName(): String = "sideshell"
 
     override fun createComponent(): JComponent {
         val settings = SideshellSettings.getInstance()
+        val bridge = SideshellBridgeService.getInstance()
 
         panel = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
 
-            add(JPanel().apply {
-                layout = BoxLayout(this, BoxLayout.X_AXIS)
-                add(JLabel("WebSocket Port: "))
-                portField = JSpinner(SpinnerNumberModel(settings.state.port, 1024, 65535, 1))
-                add(portField)
-            })
+            approvedCheckbox = JCheckBox("Allow terminal access", settings.state.approved)
+            add(approvedCheckbox)
 
-            add(Box.createVerticalStrut(8))
+            add(Box.createVerticalStrut(12))
 
-            autoStartCheckbox = JCheckBox("Auto-start on IDE launch", settings.state.autoStart)
-            add(autoStartCheckbox)
-
-            add(Box.createVerticalStrut(8))
-
-            add(JPanel().apply {
-                layout = BoxLayout(this, BoxLayout.X_AXIS)
-                add(JLabel("Output buffer size (lines): "))
-                bufferSizeField = JSpinner(SpinnerNumberModel(settings.state.outputBufferSize, 100, 100000, 100))
-                add(bufferSizeField)
-            })
-
-            add(Box.createVerticalStrut(16))
-
-            add(JLabel("Status: ${if (SideshellBridgeService.getInstance().isRunning) "Running" else "Stopped"}"))
+            val status = if (bridge.isRunning) "Running" else "Stopped"
+            add(JLabel("Status: $status"))
         }
 
         return panel!!
@@ -48,22 +30,16 @@ class SideshellConfigurable : Configurable {
 
     override fun isModified(): Boolean {
         val settings = SideshellSettings.getInstance()
-        return portField?.value != settings.state.port ||
-                autoStartCheckbox?.isSelected != settings.state.autoStart ||
-                bufferSizeField?.value != settings.state.outputBufferSize
+        return approvedCheckbox?.isSelected != settings.state.approved
     }
 
     override fun apply() {
         val settings = SideshellSettings.getInstance()
-        settings.state.port = portField?.value as? Int ?: 46118
-        settings.state.autoStart = autoStartCheckbox?.isSelected ?: true
-        settings.state.outputBufferSize = bufferSizeField?.value as? Int ?: 10000
+        settings.state.approved = approvedCheckbox?.isSelected ?: false
     }
 
     override fun reset() {
         val settings = SideshellSettings.getInstance()
-        portField?.value = settings.state.port
-        autoStartCheckbox?.isSelected = settings.state.autoStart
-        bufferSizeField?.value = settings.state.outputBufferSize
+        approvedCheckbox?.isSelected = settings.state.approved
     }
 }

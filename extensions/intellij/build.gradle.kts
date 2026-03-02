@@ -20,7 +20,6 @@ dependencies {
         bundledPlugin("org.jetbrains.plugins.terminal")
     }
 
-    implementation("org.java-websocket:Java-WebSocket:1.5.7")
     implementation("com.google.code.gson:gson:2.11.0")
 }
 
@@ -32,7 +31,7 @@ intellijPlatform {
         description = """
             Exposes JetBrains IDE terminal control for AI agents via sideshell MCP server.
 
-            Provides a WebSocket bridge that lets sideshell (or any MCP client) control
+            Provides a Unix socket bridge that lets sideshell (or any MCP client) control
             IDE terminals: read output, execute commands, create tabs/splits, and more.
 
             Works with: IntelliJ IDEA, PyCharm, WebStorm, GoLand, RustRover, PhpStorm,

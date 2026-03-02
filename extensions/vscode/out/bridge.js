@@ -35,117 +35,141 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SideshellBridge = void 0;
 const crypto = __importStar(require("crypto"));
-const http = __importStar(require("http"));
+const net = __importStar(require("net"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const os = __importStar(require("os"));
-const url = __importStar(require("url"));
 const vscode = __importStar(require("vscode"));
-const ws_1 = require("ws");
 const terminal_manager_1 = require("./terminal-manager");
 /**
- * WebSocket bridge server that exposes terminal control via JSON-RPC 2.0.
+ * Unix socket bridge server that exposes terminal control via JSON-RPC 2.0.
+ * Newline-delimited JSON protocol over Unix socket.
  *
  * Security (two layers):
  *   1. Token auth - random token generated on start, written to port file (0600).
- *      Client must connect with ?token=<token> query parameter.
- *   2. User consent - on first connection, a dialog asks the user to approve.
- *      Until approved, all JSON-RPC requests return an auth error.
+ *      Client must send {"type":"auth","token":"..."} as first message.
+ *   2. User consent - persisted in settings (sideshell.allowAccess).
+ *      On first connection, a dialog asks the user to approve.
  */
 class SideshellBridge {
-    wss = null;
     server = null;
+    clients = new Set();
     terminalManager;
     _isRunning = false;
     _token = '';
-    _approved = true; // Auto-allow for development
     _approvalPending = false;
-    port;
-    constructor(port = 46117, bufferSize = 10000) {
-        this.port = port;
-        this.terminalManager = new terminal_manager_1.TerminalManager(bufferSize);
+    constructor() {
+        this.terminalManager = new terminal_manager_1.TerminalManager(10000);
+    }
+    get _approved() {
+        return vscode.workspace.getConfiguration('sideshell').get('allowAccess', false);
+    }
+    set _approved(value) {
+        vscode.workspace.getConfiguration('sideshell').update('allowAccess', value, true);
     }
     get isRunning() {
         return this._isRunning;
+    }
+    get socketPath() {
+        return path.join(os.homedir(), '.sideshell', 'vscode.sock');
+    }
+    get portFilePath() {
+        return path.join(os.homedir(), '.sideshell', 'vscode-port');
     }
     start() {
         if (this._isRunning) {
             return;
         }
         this._token = crypto.randomBytes(32).toString('hex');
-        this._approved = true; // Auto-allow for development
         this._approvalPending = false;
-        this.server = http.createServer();
-        this.wss = new ws_1.WebSocketServer({ noServer: true });
-        // Verify token on HTTP upgrade (before WebSocket handshake)
-        this.server.on('upgrade', (request, socket, head) => {
-            const parsed = url.parse(request.url || '', true);
-            const token = parsed.query.token;
-            if (token !== this._token) {
-                console.warn('sideshell: rejected connection — invalid token');
-                socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-                socket.destroy();
-                return;
-            }
-            this.wss.handleUpgrade(request, socket, head, (ws) => {
-                this.wss.emit('connection', ws, request);
-            });
+        // Clean up stale socket file
+        try {
+            fs.unlinkSync(this.socketPath);
+        }
+        catch { /* ok */ }
+        this.server = net.createServer((socket) => {
+            this.handleConnection(socket);
         });
-        this.wss.on('connection', (ws) => {
-            console.log('sideshell: client connected (token valid)');
-            // Ask user for consent on first connection
-            if (!this._approved) {
-                this.requestApproval(ws);
+        this.server.listen(this.socketPath, () => {
+            this._isRunning = true;
+            // Set socket file permissions to owner-only
+            try {
+                fs.chmodSync(this.socketPath, 0o600);
             }
-            ws.on('message', async (data) => {
+            catch { /* ok */ }
+            this.writePortFile();
+            console.log(`sideshell bridge listening on ${this.socketPath}`);
+        });
+        this.server.on('error', (err) => {
+            console.error('sideshell bridge error:', err);
+        });
+    }
+    handleConnection(socket) {
+        let authenticated = false;
+        let buffer = '';
+        socket.on('data', async (data) => {
+            buffer += data.toString();
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ''; // Keep incomplete line in buffer
+            for (const line of lines) {
+                if (!line.trim()) {
+                    continue;
+                }
                 try {
-                    const request = JSON.parse(data.toString());
-                    // Block requests until user approves
+                    const msg = JSON.parse(line);
+                    // First message must be auth handshake
+                    if (!authenticated) {
+                        if (msg.type === 'auth' && msg.token === this._token) {
+                            authenticated = true;
+                            this.clients.add(socket);
+                            console.log('sideshell: client connected (token valid)');
+                            socket.write(JSON.stringify({ ok: true }) + '\n');
+                            if (!this._approved) {
+                                this.requestApproval(socket);
+                            }
+                        }
+                        else {
+                            console.warn('sideshell: rejected connection — invalid token');
+                            socket.write(JSON.stringify({ ok: false, error: 'invalid token' }) + '\n');
+                            socket.destroy();
+                        }
+                        continue;
+                    }
+                    // Authenticated — handle JSON-RPC request
                     if (!this._approved) {
-                        ws.send(JSON.stringify({
+                        socket.write(JSON.stringify({
                             jsonrpc: '2.0',
-                            id: request.id,
+                            id: msg.id,
                             error: {
                                 code: -32001,
                                 message: 'Waiting for user approval in IDE. '
                                     + 'Please click "Allow" in the notification.',
                             },
-                        }));
-                        return;
+                        }) + '\n');
+                        continue;
                     }
-                    const response = await this.handleRequest(request);
-                    ws.send(JSON.stringify(response));
+                    const response = await this.handleRequest(msg);
+                    socket.write(JSON.stringify(response) + '\n');
                 }
                 catch (e) {
-                    ws.send(JSON.stringify({
+                    socket.write(JSON.stringify({
                         jsonrpc: '2.0',
                         id: null,
                         error: { code: -32700, message: `Parse error: ${e.message}` },
-                    }));
+                    }) + '\n');
                 }
-            });
-            ws.on('close', () => {
-                console.log('sideshell: client disconnected');
-            });
-            ws.on('error', (err) => {
-                console.error('sideshell: WebSocket error:', err);
-            });
-        });
-        this.server.listen(this.port, '127.0.0.1', () => {
-            this._isRunning = true;
-            this.writePortFile();
-            console.log(`sideshell bridge listening on ws://127.0.0.1:${this.port}`);
-        });
-        this.server.on('error', (err) => {
-            if (err.code === 'EADDRINUSE') {
-                console.error(`Port ${this.port} already in use. Change sideshell.port in settings.`);
             }
-            else {
-                console.error('sideshell bridge error:', err);
-            }
+        });
+        socket.on('close', () => {
+            this.clients.delete(socket);
+            console.log('sideshell: client disconnected');
+        });
+        socket.on('error', (err) => {
+            this.clients.delete(socket);
+            console.error('sideshell: socket error:', err.message);
         });
     }
-    async requestApproval(ws) {
+    async requestApproval(socket) {
         if (this._approvalPending) {
             return;
         }
@@ -160,25 +184,28 @@ class SideshellBridge {
         }
         else {
             console.log('sideshell: user denied terminal access');
-            // Regenerate token so the denied client can't retry
             this._token = crypto.randomBytes(32).toString('hex');
             this.writePortFile();
-            ws.close(4001, 'Access denied by user');
+            socket.destroy();
         }
     }
     stop() {
         this._isRunning = false;
         this._token = '';
-        this._approved = false;
-        this.removePortFile();
-        if (this.wss) {
-            this.wss.close();
-            this.wss = null;
+        for (const client of this.clients) {
+            client.destroy();
         }
+        this.clients.clear();
         if (this.server) {
             this.server.close();
             this.server = null;
         }
+        this.removePortFile();
+        // Clean up socket file
+        try {
+            fs.unlinkSync(this.socketPath);
+        }
+        catch { /* ok */ }
         this.terminalManager.dispose();
     }
     async handleRequest(request) {
@@ -231,10 +258,6 @@ class SideshellBridge {
                 throw new Error(`Unknown method: ${method}`);
         }
     }
-    get portFilePath() {
-        const dir = path.join(os.homedir(), '.sideshell');
-        return path.join(dir, 'vscode-port');
-    }
     writePortFile() {
         try {
             const dir = path.dirname(this.portFilePath);
@@ -242,11 +265,11 @@ class SideshellBridge {
                 fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
             }
             const data = JSON.stringify({
-                port: this.port,
+                socket: this.socketPath,
                 pid: process.pid,
                 token: this._token,
                 ide: 'vscode',
-                version: '0.2.0',
+                version: '0.3.0',
             });
             fs.writeFileSync(this.portFilePath, data, { mode: 0o600 });
         }

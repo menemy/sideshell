@@ -6,7 +6,6 @@ let bridge: SideshellBridge | undefined;
 export function activate(context: vscode.ExtensionContext) {
     console.log('sideshell terminal extension activating...');
 
-    // Register commands
     context.subscriptions.push(
         vscode.commands.registerCommand('sideshell.start', () => {
             startBridge(context);
@@ -17,7 +16,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('sideshell.status', () => {
             if (bridge?.isRunning) {
                 vscode.window.showInformationMessage(
-                    `sideshell bridge running on port ${bridge.port}`
+                    `sideshell bridge running on ${bridge.socketPath}`
                 );
             } else {
                 vscode.window.showInformationMessage('sideshell bridge is not running');
@@ -25,11 +24,8 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // Auto-start if configured
-    const config = vscode.workspace.getConfiguration('sideshell');
-    if (config.get<boolean>('autoStart', true)) {
-        startBridge(context);
-    }
+    // Always auto-start
+    startBridge(context);
 }
 
 function startBridge(context: vscode.ExtensionContext) {
@@ -38,18 +34,12 @@ function startBridge(context: vscode.ExtensionContext) {
         return;
     }
 
-    const config = vscode.workspace.getConfiguration('sideshell');
-    const port = config.get<number>('port', 46117);
-    const bufferSize = config.get<number>('outputBufferSize', 10000);
-
-    bridge = new SideshellBridge(port, bufferSize);
+    bridge = new SideshellBridge();
     bridge.start();
 
     context.subscriptions.push({
         dispose: () => bridge?.stop()
     });
-
-    console.log(`sideshell bridge started on port ${port}`);
 }
 
 function stopBridge() {

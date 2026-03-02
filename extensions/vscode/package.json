@@ -27,22 +27,12 @@
   "main": "./out/extension.js",
   "contributes": {
     "configuration": {
-      "title": "sideshell Terminal",
+      "title": "sideshell",
       "properties": {
-        "sideshell.port": {
-          "type": "number",
-          "default": 46117,
-          "description": "WebSocket server port for sideshell bridge"
-        },
-        "sideshell.autoStart": {
+        "sideshell.allowAccess": {
           "type": "boolean",
-          "default": true,
-          "description": "Automatically start the WebSocket server on activation"
-        },
-        "sideshell.outputBufferSize": {
-          "type": "number",
-          "default": 10000,
-          "description": "Maximum lines to buffer per terminal for output reading"
+          "default": false,
+          "description": "Allow terminal access (sideshell approved)"
         }
       }
     },
@@ -71,11 +61,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
-    "@types/ws": "^8.5.0",
     "typescript": "^5.3.0",
     "@vscode/vsce": "^3.0.0"
-  },
-  "dependencies": {
-    "ws": "^8.16.0"
   }
 }

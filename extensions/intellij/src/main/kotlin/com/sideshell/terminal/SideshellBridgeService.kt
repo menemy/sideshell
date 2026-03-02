@@ -7,19 +7,24 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.ui.Messages
-import org.java_websocket.WebSocket
-import org.java_websocket.handshake.ClientHandshake
-import org.java_websocket.server.WebSocketServer
+import java.io.BufferedReader
 import java.io.File
-import java.net.InetSocketAddress
+import java.io.InputStreamReader
+import java.io.PrintWriter
+import java.net.StandardProtocolFamily
+import java.net.UnixDomainSocketAddress
+import java.nio.channels.Channels
+import java.nio.channels.ServerSocketChannel
+import java.nio.channels.SocketChannel
 import java.security.SecureRandom
 
 /**
- * WebSocket bridge service that exposes terminal control via JSON-RPC 2.0.
+ * Unix socket bridge service that exposes terminal control via JSON-RPC 2.0.
+ * Newline-delimited JSON protocol over Unix domain socket.
  *
  * Security (two layers):
  *   1. Token auth - random token generated on start, written to port file (0600).
- *      Client must include ?token=<token> in the WebSocket URL.
+ *      Client must send {"type":"auth","token":"..."} as first message.
  *   2. User consent - on first connection, a dialog asks the user to approve.
  *      Until approved, all JSON-RPC requests return an auth error.
  */
@@ -27,64 +32,126 @@ import java.security.SecureRandom
 class SideshellBridgeService {
     private val log = Logger.getInstance(SideshellBridgeService::class.java)
     private val gson = GsonBuilder().serializeNulls().create()
-    private var server: SideshellWebSocketServer? = null
+    private var serverChannel: ServerSocketChannel? = null
+    private var serverThread: Thread? = null
     private val terminalManager = TerminalManagerService()
 
     private var token: String = ""
     @Volatile
-    private var approved = true  // TODO: temporary auto-allow for development
-    @Volatile
     private var approvalPending = false
+    @Volatile
+    private var running = false
+
+    private val socketPath: String
+        get() = File(System.getProperty("user.home"), ".sideshell/intellij.sock").absolutePath
 
     val isRunning: Boolean
-        get() = server?.isRunning == true
+        get() = running
 
     fun start() {
-        if (isRunning) return
+        if (running) return
 
-        val settings = SideshellSettings.getInstance()
-        val port = settings.state.port
-
-        // Generate auth token
         token = generateToken()
-        approved = true   // TODO: temporary auto-allow for development
         approvalPending = false
 
         try {
-            server = SideshellWebSocketServer(port, token) { conn, request ->
-                handleConnection(conn, request)
-            }
-            server?.start()
-            writePortFile(port)
-            log.info("sideshell bridge started on ws://127.0.0.1:$port")
+            val sockFile = File(socketPath)
+            sockFile.parentFile?.mkdirs()
+            sockFile.delete() // Clean up stale socket
+
+            val address = UnixDomainSocketAddress.of(socketPath)
+            serverChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
+            serverChannel!!.bind(address)
+
+            // Set socket file permissions to owner-only
+            sockFile.setReadable(false, false)
+            sockFile.setReadable(true, true)
+            sockFile.setWritable(false, false)
+            sockFile.setWritable(true, true)
+
+            running = true
+            writePortFile()
+
+            // Accept connections in a background thread
+            serverThread = Thread({
+                while (running) {
+                    try {
+                        val client = serverChannel?.accept() ?: break
+                        Thread { handleClient(client) }.start()
+                    } catch (e: Exception) {
+                        if (running) {
+                            log.error("Accept error: ${e.message}", e)
+                        }
+                    }
+                }
+            }, "sideshell-accept")
+            serverThread!!.isDaemon = true
+            serverThread!!.start()
+
+            log.info("sideshell bridge started on $socketPath")
         } catch (e: Exception) {
             log.error("Failed to start sideshell bridge: ${e.message}", e)
         }
     }
 
+    private fun handleClient(channel: SocketChannel) {
+        try {
+            val reader = BufferedReader(InputStreamReader(Channels.newInputStream(channel)))
+            val writer = PrintWriter(Channels.newOutputStream(channel), true)
+
+            // First message must be auth handshake
+            val authLine = reader.readLine() ?: return
+            val authMsg = JsonParser.parseString(authLine).asJsonObject
+            val msgType = authMsg.get("type")?.asString
+            val msgToken = authMsg.get("token")?.asString
+
+            if (msgType != "auth" || msgToken != token) {
+                log.warn("sideshell: rejected connection — invalid token")
+                writer.println(gson.toJson(mapOf("ok" to false, "error" to "invalid token")))
+                channel.close()
+                return
+            }
+
+            writer.println(gson.toJson(mapOf("ok" to true)))
+            log.info("sideshell: client connected (token valid)")
+
+            if (!SideshellSettings.getInstance().state.approved && !approvalPending) {
+                requestApproval(channel)
+            }
+
+            // Read JSON-RPC requests (newline-delimited)
+            while (running) {
+                val line = reader.readLine() ?: break
+                val response = handleRequest(line)
+                writer.println(response)
+            }
+        } catch (e: Exception) {
+            if (running) {
+                log.debug("Client disconnected: ${e.message}")
+            }
+        } finally {
+            try { channel.close() } catch (_: Exception) {}
+            log.info("sideshell: client disconnected")
+        }
+    }
+
     fun stop() {
         try {
-            server?.stop()
-            server = null
+            running = false
+            serverChannel?.close()
+            serverChannel = null
+            serverThread = null
             token = ""
-            approved = false
             removePortFile()
+            // Clean up socket file
+            File(socketPath).delete()
             log.info("sideshell bridge stopped")
         } catch (e: Exception) {
             log.error("Failed to stop sideshell bridge: ${e.message}", e)
         }
     }
 
-    private fun handleConnection(conn: WebSocket, request: String): String {
-        // Request user approval on first connection
-        if (!approved && !approvalPending) {
-            requestApproval(conn)
-        }
-
-        return handleRequest(request)
-    }
-
-    private fun requestApproval(conn: WebSocket) {
+    private fun requestApproval(channel: SocketChannel) {
         approvalPending = true
 
         ApplicationManager.getApplication().invokeLater {
@@ -102,14 +169,13 @@ class SideshellBridgeService {
             approvalPending = false
 
             if (result == Messages.YES) {
-                approved = true
-                log.info("User approved sideshell terminal access")
+                SideshellSettings.getInstance().state.approved = true
+                log.info("User approved sideshell terminal access (saved)")
             } else {
                 log.info("User denied sideshell terminal access")
-                // Regenerate token so denied client can't retry
                 token = generateToken()
-                writePortFile(SideshellSettings.getInstance().state.port)
-                conn.close(4001, "Access denied by user")
+                writePortFile()
+                try { channel.close() } catch (_: Exception) {}
             }
         }
     }
@@ -121,8 +187,7 @@ class SideshellBridgeService {
             val method = json.get("method")?.asString ?: ""
             val params = json.getAsJsonObject("params") ?: JsonObject()
 
-            // Block requests until user approves
-            if (!approved) {
+            if (!SideshellSettings.getInstance().state.approved) {
                 val response = JsonObject()
                 response.addProperty("jsonrpc", "2.0")
                 response.add("id", id)
@@ -156,19 +221,16 @@ class SideshellBridgeService {
         }
     }
 
-    /** Safely get a string from JSON params, handling JsonNull. */
     private fun JsonObject.str(key: String): String? {
         val el = get(key) ?: return null
         return if (el.isJsonNull) null else el.asString
     }
 
-    /** Safely get an int from JSON params, handling JsonNull. */
     private fun JsonObject.int(key: String, default: Int): Int {
         val el = get(key) ?: return default
         return if (el.isJsonNull) default else el.asInt
     }
 
-    /** Safely get a boolean from JSON params, handling JsonNull. */
     private fun JsonObject.bool(key: String, default: Boolean): Boolean {
         val el = get(key) ?: return default
         return if (el.isJsonNull) default else el.asBoolean
@@ -234,20 +296,19 @@ class SideshellBridgeService {
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
-    private fun writePortFile(port: Int) {
+    private fun writePortFile() {
         try {
             val dir = File(System.getProperty("user.home"), ".sideshell")
             dir.mkdirs()
             val file = File(dir, "intellij-port")
             val data = gson.toJson(mapOf(
-                "port" to port,
+                "socket" to socketPath,
                 "pid" to ProcessHandle.current().pid(),
                 "token" to token,
                 "ide" to "intellij",
-                "version" to "0.1.0",
+                "version" to "0.2.0",
             ))
             file.writeText(data)
-            // Set file permissions to owner-only (0600)
             file.setReadable(false, false)
             file.setReadable(true, true)
             file.setWritable(false, false)
@@ -259,8 +320,7 @@ class SideshellBridgeService {
 
     private fun removePortFile() {
         try {
-            val file = File(System.getProperty("user.home"), ".sideshell/intellij-port")
-            file.delete()
+            File(System.getProperty("user.home"), ".sideshell/intellij-port").delete()
         } catch (e: Exception) {
             log.debug("Failed to remove port file: ${e.message}")
         }
@@ -269,75 +329,5 @@ class SideshellBridgeService {
     companion object {
         fun getInstance(): SideshellBridgeService =
             ApplicationManager.getApplication().getService(SideshellBridgeService::class.java)
-    }
-}
-
-/**
- * WebSocket server that validates auth tokens on connection handshake.
- *
- * The token must be passed as a query parameter: ws://127.0.0.1:PORT?token=TOKEN
- */
-private class SideshellWebSocketServer(
-    port: Int,
-    private val expectedToken: String,
-    private val handler: (WebSocket, String) -> String,
-) : WebSocketServer(InetSocketAddress("127.0.0.1", port)) {
-
-    private val log = Logger.getInstance(SideshellWebSocketServer::class.java)
-    var isRunning = false
-        private set
-
-    override fun onOpen(conn: WebSocket, handshake: ClientHandshake) {
-        // Validate token from query parameter
-        val resource = handshake.resourceDescriptor ?: ""
-        val tokenParam = parseQueryParam(resource, "token")
-
-        if (tokenParam != expectedToken) {
-            log.warn("sideshell: rejected connection — invalid token")
-            conn.close(4003, "Invalid token")
-            return
-        }
-
-        log.info("sideshell: client connected (token valid)")
-    }
-
-    override fun onClose(conn: WebSocket, code: Int, reason: String, remote: Boolean) {
-        log.info("sideshell: client disconnected: $reason")
-    }
-
-    override fun onMessage(conn: WebSocket, message: String) {
-        try {
-            val response = handler(conn, message)
-            conn.send(response)
-        } catch (e: Exception) {
-            log.error("Error handling message: ${e.message}", e)
-        }
-    }
-
-    override fun onError(conn: WebSocket?, ex: Exception) {
-        log.error("WebSocket error: ${ex.message}", ex)
-    }
-
-    override fun onStart() {
-        isRunning = true
-        log.info("sideshell WebSocket server started")
-    }
-
-    override fun stop() {
-        isRunning = false
-        super.stop()
-    }
-
-    private fun parseQueryParam(resource: String, key: String): String? {
-        val queryStart = resource.indexOf('?')
-        if (queryStart < 0) return null
-        val query = resource.substring(queryStart + 1)
-        for (param in query.split('&')) {
-            val parts = param.split('=', limit = 2)
-            if (parts.size == 2 && parts[0] == key) {
-                return parts[1]
-            }
-        }
-        return null
     }
 }

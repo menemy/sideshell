@@ -1,10 +1,10 @@
-"""IDE Bridge Protocol - shared WebSocket client for VSCode/IntelliJ backends.
+"""IDE Bridge Protocol - Unix socket client for VSCode/IntelliJ backends.
 
-Both IDE backends (VSCode extension, IntelliJ plugin) run a WebSocket server
-on localhost. This module provides the client-side protocol implementation.
+Both IDE backends (VSCode extension, IntelliJ plugin) run a Unix socket server.
+This module provides the client-side protocol implementation.
 
-Discovery: extensions write their port to ~/.sideshell/<ide>-port
-Protocol: JSON-RPC 2.0 over WebSocket
+Discovery: extensions write socket info to ~/.sideshell/<ide>-port
+Protocol: JSON-RPC 2.0 over Unix socket (newline-delimited JSON)
 
 Methods:
   - list_sessions -> [{id, name, path, job, at_prompt}]
@@ -35,11 +35,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Port file directory
+# Socket directory
 SIDESHELL_DIR = Path.home() / ".sideshell"
 
-# Default ports
-DEFAULT_VSCODE_PORT = 46117
+# Default socket paths
+DEFAULT_VSCODE_PORT = 46117  # kept for backward compat with port file parsing
 DEFAULT_INTELLIJ_PORT = 46118
 
 
@@ -48,82 +48,90 @@ class IDEBridgeError(Exception):
 
 
 class IDEBridgeClient:
-    """WebSocket client for communicating with IDE terminal extensions.
+    """Unix socket client for communicating with IDE terminal extensions.
 
-    The IDE extension/plugin runs a WebSocket server on localhost.
-    This client connects to it and sends JSON-RPC 2.0 requests.
+    The IDE extension/plugin runs a Unix socket server.
+    This client connects to it and sends JSON-RPC 2.0 requests
+    as newline-delimited JSON.
     """
 
     def __init__(self, ide_name: str, default_port: int) -> None:
         self.ide_name = ide_name
         self.default_port = default_port
-        self._ws: Any = None
+        self._reader: asyncio.StreamReader | None = None
+        self._writer: asyncio.StreamWriter | None = None
         self._request_id = 0
         self._pending: dict[int, asyncio.Future[Any]] = {}
         self._reader_task: asyncio.Task[None] | None = None
         self._connected = False
-        self._port: int | None = None
         self._token: str | None = None
 
     @property
     def port_file(self) -> Path:
         return SIDESHELL_DIR / f"{self.ide_name}-port"
 
-    def _discover_port_and_token(self) -> tuple[int, str | None]:
-        """Discover the port and auth token from the port file.
+    @property
+    def socket_path(self) -> Path:
+        return SIDESHELL_DIR / f"{self.ide_name}.sock"
+
+    def _discover_socket(self) -> tuple[str, str | None]:
+        """Discover the socket path and auth token.
+
+        Reads port file for socket path and token.
+        Falls back to well-known socket path.
 
         Returns:
-            (port, token) tuple. Token may be None if not present.
+            (socket_path, token) tuple. Token may be None.
         """
         if self.port_file.exists():
             try:
                 content = self.port_file.read_text().strip()
                 data = json.loads(content)
                 if isinstance(data, dict):
-                    port = int(data.get("port", self.default_port))
+                    sock = data.get("socket", str(self.socket_path))
                     token = data.get("token")
-                    logger.debug(f"Discovered {self.ide_name} port: {port}")
-                    return port, token
-                else:
-                    return int(data), None
+                    logger.debug(f"Discovered {self.ide_name} socket: {sock}")
+                    return sock, token
             except (json.JSONDecodeError, ValueError):
-                try:
-                    return int(content), None
-                except ValueError:
-                    pass
-        return self.default_port, None
+                pass
+        return str(self.socket_path), None
 
     async def connect(self) -> bool:
-        """Connect to the IDE WebSocket server."""
+        """Connect to the IDE Unix socket server."""
         try:
-            import websockets
+            sock_path, self._token = self._discover_socket()
+            logger.info(f"Connecting to {self.ide_name} at {sock_path}")
 
-            self._port, self._token = self._discover_port_and_token()
-            uri = f"ws://127.0.0.1:{self._port}"
-            if self._token:
-                uri += f"?token={self._token}"
-            logger.info(f"Connecting to {self.ide_name} at ws://127.0.0.1:{self._port}")
-
-            self._ws = await asyncio.wait_for(
-                websockets.connect(uri),
+            self._reader, self._writer = await asyncio.wait_for(
+                asyncio.open_unix_connection(sock_path),
                 timeout=5.0,
             )
+
+            # Send token handshake as first message
+            handshake = {"type": "auth", "token": self._token or ""}
+            self._writer.write(json.dumps(handshake).encode() + b"\n")
+            await self._writer.drain()
+
+            # Read auth response
+            line = await asyncio.wait_for(self._reader.readline(), timeout=5.0)
+            resp = json.loads(line.decode())
+            if not resp.get("ok"):
+                err = resp.get("error", "auth failed")
+                logger.warning(f"Auth rejected by {self.ide_name}: {err}")
+                self._writer.close()
+                return False
+
             self._connected = True
             self._reader_task = asyncio.create_task(self._read_loop())
             logger.info(f"Connected to {self.ide_name}")
             return True
-        except ImportError:
-            raise IDEBridgeError(
-                "websockets package required for IDE backends. "
-                "Install with: pip install websockets"
-            ) from None
         except (OSError, TimeoutError) as e:
             logger.warning(f"Cannot connect to {self.ide_name}: {e}")
             self._connected = False
             return False
 
     async def disconnect(self) -> None:
-        """Disconnect from the IDE WebSocket server."""
+        """Disconnect from the IDE socket."""
         self._connected = False
         if self._reader_task:
             self._reader_task.cancel()
@@ -132,9 +140,14 @@ class IDEBridgeClient:
             except asyncio.CancelledError:
                 pass
             self._reader_task = None
-        if self._ws:
-            await self._ws.close()
-            self._ws = None
+        if self._writer:
+            self._writer.close()
+            try:
+                await self._writer.wait_closed()
+            except Exception:
+                pass
+            self._writer = None
+            self._reader = None
         # Cancel pending futures
         for future in self._pending.values():
             if not future.done():
@@ -143,7 +156,7 @@ class IDEBridgeClient:
 
     async def ensure_connection(self) -> None:
         """Ensure we're connected, reconnect if needed."""
-        if not self._connected or self._ws is None:
+        if not self._connected or self._writer is None:
             success = await self.connect()
             if not success:
                 raise IDEBridgeError(
@@ -153,39 +166,37 @@ class IDEBridgeClient:
                 )
 
     async def _read_loop(self) -> None:
-        """Read responses from the WebSocket."""
+        """Read responses from the Unix socket (newline-delimited JSON)."""
         try:
-            async for message in self._ws:
+            while self._reader and not self._reader.at_eof():
+                line = await self._reader.readline()
+                if not line:
+                    break
                 try:
-                    data = json.loads(message)
+                    data = json.loads(line.decode())
                     req_id = data.get("id")
                     if req_id is not None and req_id in self._pending:
                         future = self._pending.pop(req_id)
                         if not future.done():
                             if "error" in data:
                                 future.set_exception(
-                                    IDEBridgeError(data["error"].get("message", "Unknown error"))
+                                    IDEBridgeError(
+                                        data["error"].get("message", "Unknown error")
+                                    )
                                 )
                             else:
                                 future.set_result(data.get("result"))
                 except json.JSONDecodeError:
-                    logger.warning(f"Invalid JSON from {self.ide_name}: {message[:200]}")
+                    logger.warning(f"Invalid JSON from {self.ide_name}")
         except Exception as e:
-            logger.debug(f"WebSocket read loop ended: {e}")
+            logger.debug(f"Socket read loop ended: {e}")
             self._connected = False
 
-    async def call(self, method: str, params: dict[str, Any] | None = None,
-                   timeout: float = 30.0) -> Any:
-        """Send a JSON-RPC request and wait for response.
-
-        Args:
-            method: RPC method name.
-            params: Method parameters.
-            timeout: Response timeout in seconds.
-
-        Returns:
-            Response result.
-        """
+    async def call(
+        self, method: str, params: dict[str, Any] | None = None,
+        timeout: float = 30.0,  # noqa: ASYNC109
+    ) -> Any:
+        """Send a JSON-RPC request and wait for response."""
         await self.ensure_connection()
 
         self._request_id += 1
@@ -203,7 +214,8 @@ class IDEBridgeClient:
         self._pending[req_id] = future
 
         try:
-            await self._ws.send(json.dumps(request))
+            self._writer.write(json.dumps(request).encode() + b"\n")  # type: ignore[union-attr]
+            await self._writer.drain()  # type: ignore[union-attr]
             result = await asyncio.wait_for(future, timeout=timeout)
             return result
         except TimeoutError:
@@ -232,7 +244,7 @@ class IDEBridgeClient:
         command: str,
         session_id: str | None = None,
         wait: bool = False,
-        timeout: int = 30,
+        timeout: int = 30,  # noqa: ASYNC109
         watch_for: str = "prompt",
     ) -> str:
         return await self.call(
@@ -250,16 +262,20 @@ class IDEBridgeClient:
     async def send_control(self, key: str, session_id: str | None = None) -> str:
         return await self.call("send_control", {"session_id": session_id, "key": key})
 
-    async def split_pane(self, direction: str, session_id: str | None = None) -> dict[str, Any]:
-        return await self.call("split_pane", {"session_id": session_id, "direction": direction})
+    async def split_pane(
+        self, direction: str, session_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self.call(
+            "split_pane", {"session_id": session_id, "direction": direction},
+        )
 
     async def create_tab(
-        self, profile: str | None = None, command: str | None = None
+        self, profile: str | None = None, command: str | None = None,
     ) -> dict[str, Any]:
         return await self.call("create_tab", {"profile": profile, "command": command})
 
     async def create_window(
-        self, profile: str | None = None, command: str | None = None
+        self, profile: str | None = None, command: str | None = None,
     ) -> dict[str, Any]:
         return await self.call("create_window", {"profile": profile, "command": command})
 
@@ -272,7 +288,9 @@ class IDEBridgeClient:
     async def clear_terminal(self, session_id: str | None = None) -> str:
         return await self.call("clear_terminal", {"session_id": session_id})
 
-    async def get_terminal_state(self, session_id: str | None = None) -> dict[str, Any]:
+    async def get_terminal_state(
+        self, session_id: str | None = None,
+    ) -> dict[str, Any]:
         return await self.call("get_terminal_state", {"session_id": session_id})
 
     async def set_appearance(
@@ -300,25 +318,37 @@ class IDEBridgeClient:
         return await self.call("return_focus", {"session_id": session_id})
 
 
-def write_port_file(ide_name: str, port: int, pid: int | None = None) -> Path:
-    """Write port file for IDE extension discovery (called by extensions).
+def write_socket_file(
+    ide_name: str, socket_path: str, token: str, pid: int | None = None,
+) -> Path:
+    """Write socket info file for client discovery.
 
     Args:
         ide_name: IDE name (vscode, intellij).
-        port: WebSocket server port.
+        socket_path: Path to the Unix socket.
+        token: Auth token.
         pid: Optional PID of the IDE process.
 
     Returns:
-        Path to the port file.
+        Path to the info file.
     """
     SIDESHELL_DIR.mkdir(parents=True, exist_ok=True)
     port_file = SIDESHELL_DIR / f"{ide_name}-port"
-    data = {"port": port, "pid": pid or os.getpid()}
+    data = {
+        "socket": socket_path,
+        "token": token,
+        "pid": pid or os.getpid(),
+        "ide": ide_name,
+    }
     port_file.write_text(json.dumps(data))
+    port_file.chmod(0o600)
     return port_file
 
 
 def remove_port_file(ide_name: str) -> None:
-    """Remove port file on extension shutdown."""
+    """Remove port/socket file on extension shutdown."""
     port_file = SIDESHELL_DIR / f"{ide_name}-port"
     port_file.unlink(missing_ok=True)
+    # Also remove socket file
+    sock_file = SIDESHELL_DIR / f"{ide_name}.sock"
+    sock_file.unlink(missing_ok=True)

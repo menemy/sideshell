@@ -1,6 +1,6 @@
 """Integration tests against REAL running IDE plugins.
 
-These tests connect to actually running VSCode/IntelliJ plugins via WebSocket
+These tests connect to actually running VSCode/IntelliJ plugins via Unix socket
 and exercise every JSON-RPC method with assertions.
 
 Prerequisites:
@@ -20,56 +20,73 @@ import json
 from pathlib import Path
 
 import pytest
-from websockets.exceptions import ConnectionClosedError, InvalidStatus
 
 SIDESHELL_DIR = Path.home() / ".sideshell"
 
 
-def read_port_file(ide: str) -> tuple[int, str] | None:
-    """Read port and token from port file."""
+def read_port_file(ide: str) -> tuple[str, str] | None:
+    """Read socket path and token from port file."""
     port_file = SIDESHELL_DIR / f"{ide}-port"
     if not port_file.exists():
         return None
     data = json.loads(port_file.read_text())
-    return data["port"], data["token"]
+    sock = data.get("socket", str(SIDESHELL_DIR / f"{ide}.sock"))
+    token = data.get("token", "")
+    return sock, token
 
 
 class IDEClient:
-    """Minimal WebSocket JSON-RPC client for integration tests."""
+    """Minimal Unix socket JSON-RPC client for integration tests."""
 
-    def __init__(self, port: int, token: str) -> None:
-        self.port = port
+    def __init__(self, socket_path: str, token: str) -> None:
+        self.socket_path = socket_path
         self.token = token
-        self._ws: object = None
+        self._reader: asyncio.StreamReader | None = None
+        self._writer: asyncio.StreamWriter | None = None
         self._req_id = 0
 
     async def connect(self) -> None:
-        import websockets
-
-        uri = f"ws://127.0.0.1:{self.port}?token={self.token}"
-        self._ws = await asyncio.wait_for(websockets.connect(uri), timeout=5.0)
+        self._reader, self._writer = await asyncio.wait_for(
+            asyncio.open_unix_connection(self.socket_path),
+            timeout=5.0,
+        )
+        # Send auth handshake
+        handshake = {"type": "auth", "token": self.token}
+        self._writer.write(json.dumps(handshake).encode() + b"\n")
+        await self._writer.drain()
+        # Read auth response
+        line = await asyncio.wait_for(self._reader.readline(), timeout=5.0)
+        resp = json.loads(line.decode())
+        if not resp.get("ok"):
+            raise ConnectionError(f"Auth failed: {resp.get('error')}")
 
     async def disconnect(self) -> None:
-        if self._ws:
-            await self._ws.close()
+        if self._writer:
+            self._writer.close()
+            try:
+                await self._writer.wait_closed()
+            except Exception:
+                pass
 
     async def call(self, method: str, params: dict | None = None, timeout: float = 10.0) -> dict:
         self._req_id += 1
         msg = {"jsonrpc": "2.0", "id": self._req_id, "method": method}
         if params:
             msg["params"] = params
-        await self._ws.send(json.dumps(msg))
-        raw = await asyncio.wait_for(self._ws.recv(), timeout=timeout)
-        resp = json.loads(raw)
+        self._writer.write(json.dumps(msg).encode() + b"\n")
+        await self._writer.drain()
+        raw = await asyncio.wait_for(self._reader.readline(), timeout=timeout)
+        resp = json.loads(raw.decode())
         # Retry once if waiting for approval
         if "error" in resp and resp["error"].get("code") == -32001:
             print("\n>>> Waiting for approval — click Allow in IDE <<<")
             await asyncio.sleep(15)
             self._req_id += 1
             msg["id"] = self._req_id
-            await self._ws.send(json.dumps(msg))
-            raw = await asyncio.wait_for(self._ws.recv(), timeout=timeout)
-            resp = json.loads(raw)
+            self._writer.write(json.dumps(msg).encode() + b"\n")
+            await self._writer.drain()
+            raw = await asyncio.wait_for(self._reader.readline(), timeout=timeout)
+            resp = json.loads(raw.decode())
         return resp
 
 
@@ -111,21 +128,17 @@ async def intellij() -> IDEClient:
 @skip_vscode
 class TestVSCodeSecurity:
     @pytest.mark.asyncio
-    async def test_rejects_no_token(self) -> None:
-        import websockets
-
-        with pytest.raises(InvalidStatus) as exc_info:
-            async with websockets.connect(f"ws://127.0.0.1:{vscode_info[0]}"):
-                pass
-        assert exc_info.value.response.status_code == 401
-
-    @pytest.mark.asyncio
     async def test_rejects_wrong_token(self) -> None:
-        import websockets
-
-        with pytest.raises(InvalidStatus):
-            async with websockets.connect(f"ws://127.0.0.1:{vscode_info[0]}?token=wrong"):
-                pass
+        assert vscode_info is not None
+        sock_path = vscode_info[0]
+        reader, writer = await asyncio.open_unix_connection(sock_path)
+        # Send wrong token
+        writer.write(json.dumps({"type": "auth", "token": "wrong"}).encode() + b"\n")
+        await writer.drain()
+        line = await asyncio.wait_for(reader.readline(), timeout=5.0)
+        resp = json.loads(line.decode())
+        assert not resp.get("ok"), f"Should reject wrong token, got: {resp}"
+        writer.close()
 
     @pytest.mark.asyncio
     async def test_accepts_valid_token(self, vscode: IDEClient) -> None:
@@ -136,22 +149,16 @@ class TestVSCodeSecurity:
 @skip_intellij
 class TestIntelliJSecurity:
     @pytest.mark.asyncio
-    async def test_rejects_no_token(self) -> None:
-        import websockets
-
-        with pytest.raises(ConnectionClosedError) as exc_info:
-            async with websockets.connect(f"ws://127.0.0.1:{intellij_info[0]}") as ws:
-                # IntelliJ accepts then closes with 4003
-                await ws.recv()
-        assert exc_info.value.rcvd.code == 4003
-
-    @pytest.mark.asyncio
     async def test_rejects_wrong_token(self) -> None:
-        import websockets
-
-        with pytest.raises(ConnectionClosedError):
-            async with websockets.connect(f"ws://127.0.0.1:{intellij_info[0]}?token=wrong") as ws:
-                await ws.recv()
+        assert intellij_info is not None
+        sock_path = intellij_info[0]
+        reader, writer = await asyncio.open_unix_connection(sock_path)
+        writer.write(json.dumps({"type": "auth", "token": "wrong"}).encode() + b"\n")
+        await writer.drain()
+        line = await asyncio.wait_for(reader.readline(), timeout=5.0)
+        resp = json.loads(line.decode())
+        assert not resp.get("ok"), f"Should reject wrong token, got: {resp}"
+        writer.close()
 
     @pytest.mark.asyncio
     async def test_accepts_valid_token(self, intellij: IDEClient) -> None:
@@ -180,7 +187,6 @@ class TestVSCodeSessions:
         assert "active" in session
         assert isinstance(session["id"], str)
         assert len(session["id"]) > 0
-        # ID should not contain Promise
         assert "Promise" not in session["id"]
         assert "object" not in session["id"]
 
@@ -189,7 +195,6 @@ class TestVSCodeSessions:
         resp = await vscode.call("get_active_session")
         result = resp["result"]
         assert "session_id" in result
-        # session_id is either a string or null
         if result["session_id"] is not None:
             assert isinstance(result["session_id"], str)
             assert result["session_id"].startswith("term-")
@@ -306,8 +311,6 @@ class TestVSCodeCreateClose:
 
     @pytest.mark.asyncio
     async def test_split_pane(self, vscode: IDEClient) -> None:
-        before = (await vscode.call("list_sessions"))["result"]
-
         resp = await vscode.call("split_pane", {"direction": "v"})
         assert "result" in resp
         new_id = resp["result"]["new_session_id"]

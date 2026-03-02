@@ -10,9 +10,7 @@ import com.intellij.openapi.components.*
 )
 class SideshellSettings : PersistentStateComponent<SideshellSettings.State> {
     data class State(
-        var port: Int = 46118,
-        var autoStart: Boolean = true,
-        var outputBufferSize: Int = 10000,
+        var approved: Boolean = false,
     )
 
     private var myState = State()
