@@ -15,7 +15,7 @@ make help      # show all targets
 
 ## 1. Python MCP Server
 
-The core. Talks to terminal backends (iTerm2, tmux, Kitty, WezTerm) and IDE plugins.
+The core. Talks to terminal backends and IDE plugins via Unix sockets.
 
 ### From source (development)
 
@@ -77,21 +77,11 @@ make install-cursor
 # Then in Cursor: Cmd+Shift+P → "Developer: Reload Window"
 ```
 
-### From VSCode Marketplace (when published)
-
-Search "sideshell" in Extensions panel, or:
-
-```bash
-code --install-extension sideshell.sideshell-terminal
-```
-
 ### Verify it's running
-
-Check that `~/.sideshell/vscode-port` exists after starting the IDE:
 
 ```bash
 cat ~/.sideshell/vscode-port
-# Should show: {"port":46117,"pid":...,"token":"...","ide":"vscode","version":"0.2.0"}
+# Should show: {"socket":".../.sideshell/vscode.sock","pid":...,"token":"...","ide":"vscode"}
 ```
 
 ---
@@ -114,15 +104,11 @@ make install-intellij
 # Then restart IntelliJ
 ```
 
-### From JetBrains Marketplace (when published)
-
-Settings → Plugins → Marketplace → search "sideshell"
-
 ### Verify it's running
 
 ```bash
 cat ~/.sideshell/intellij-port
-# Should show: {"port":46118,"pid":...,"token":"...","ide":"intellij","version":"0.1.0"}
+# Should show: {"socket":".../.sideshell/intellij.sock","pid":...,"token":"...","ide":"intellij"}
 ```
 
 ---
@@ -133,13 +119,19 @@ The Python MCP server auto-detects available backends. No extra setup needed for
 
 | Backend | Requirements | Notes |
 |---------|-------------|-------|
-| iTerm2 | iTerm2 running, Python API enabled | Preferences → General → Magic → Enable Python API |
-| tmux | `brew install tmux` | Works headless |
+| Ghostty | `brew install tmux` | Auto-creates `sideshell` tmux session. Watch: `tmux attach -t sideshell` |
+| tmux | `brew install tmux` | Auto-creates `sideshell` session if none exist |
+| iTerm2 | iTerm2 + `pip install sideshell-mcp[iterm2]` | Preferences → General → Magic → Enable Python API |
 | Kitty | `brew install --cask kitty` | Auto-detected if running |
 | WezTerm | `brew install --cask wezterm` | Auto-detected if running |
-| VSCode/Cursor | Extension installed (see above) | Communicates via WebSocket |
-| IntelliJ | Plugin installed (see above) | Communicates via WebSocket |
-| Ghostty | Not supported yet | No remote control API available |
+| maquake | maquake running | Auto-detected via `/tmp/maquake.sock` |
+| VSCode/Cursor | Extension installed (see above) | Unix socket at `~/.sideshell/vscode.sock` |
+| IntelliJ | Plugin installed (see above) | Unix socket at `~/.sideshell/intellij.sock` |
+
+### Dependencies
+
+- **Base install** (`pip install sideshell-mcp`): only `mcp` package. Zero extra deps for tmux, Ghostty, Kitty, WezTerm, maquake, VSCode, IntelliJ.
+- **iTerm2**: `pip install sideshell-mcp[iterm2]` adds the `iterm2` package.
 
 ---
 
@@ -154,12 +146,12 @@ Check the plugin directory path matches your IDE version:
 ls ~/Library/Application\ Support/JetBrains/*/plugins/
 ```
 
-### Port file missing
-The IDE plugin/extension writes `~/.sideshell/<ide>-port` on startup. If missing:
+### Socket file missing
+The IDE plugin/extension writes `~/.sideshell/<ide>.sock` on startup. If missing:
 - Check the extension/plugin is installed and active
-- Check IDE developer console for errors (Help → Toggle Developer Tools)
+- Check IDE developer console for errors
 - Try `Cmd+Shift+P → "sideshell: Start Terminal Bridge"` in VSCode/Cursor
 
 ### Permission denied on first connect
 On first connection, the IDE shows an approval dialog. Click "Allow".
-For development, auto-allow is enabled (`_approved = true` in bridge source).
+The setting persists — check IDE settings to revoke/grant access.
