@@ -155,3 +155,19 @@ The IDE plugin/extension writes `~/.sideshell/<ide>.sock` on startup. If missing
 ### Permission denied on first connect
 On first connection, the IDE shows an approval dialog. Click "Allow".
 The setting persists — check IDE settings to revoke/grant access.
+
+### Keep routine commands out of shell history
+
+sideshell hints LLMs to prefix routine commands with a space. For this to work, your shell must be configured to ignore space-prefixed commands:
+
+**zsh** (add to `~/.zshrc`):
+```bash
+setopt HIST_IGNORE_SPACE
+```
+
+**bash** (add to `~/.bashrc`):
+```bash
+HISTCONTROL=ignorespace
+# or to ignore both spaces and duplicates:
+HISTCONTROL=ignoreboth
+```
