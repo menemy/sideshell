@@ -185,7 +185,11 @@ class VibeSideshellServer:
                     "properties": {
                         "command": {
                             "type": "string",
-                            "description": "Command to execute. Omit with wait=true to monitor",
+                            "description": (
+                                "Command to execute. Omit with wait=true to monitor. "
+                                "Tip: prefix with a space to keep out of shell history "
+                                "(e.g. for routine/repeated commands)."
+                            ),
                         },
                         "session_id": {
                             "type": "string",
