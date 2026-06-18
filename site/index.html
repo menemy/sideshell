@@ -227,8 +227,8 @@
             </div>
 
             <!-- Terminal Mockup -->
-            <div class="relative max-w-3xl">
-                <div class="terminal-glow terminal-scanlines relative rounded-xl bg-[#0d1117] border border-shell-border overflow-hidden">
+            <div class="relative max-w-4xl">
+                <div class="terminal-glow terminal-scanlines relative rounded-xl bg-[#0d1117] border border-shell-border overflow-hidden" id="terminal">
                     <!-- Title bar -->
                     <div class="flex items-center gap-2 px-4 py-3 bg-[#161b22] border-b border-shell-border">
                         <div class="flex gap-1.5">
@@ -242,8 +242,11 @@
                         <div class="w-12"></div>
                     </div>
 
-                    <!-- Terminal content (filled by the live session demo) -->
-                    <div class="p-5 font-mono text-[13px] leading-relaxed h-[400px] overflow-y-auto whitespace-pre-wrap" id="terminal"></div>
+                    <!-- Tab strip (driven by the demo) -->
+                    <div class="flex items-stretch gap-1 px-2 pt-2 bg-[#0d1117] border-b border-shell-border/60 font-mono text-xs overflow-hidden" id="tabbar"></div>
+
+                    <!-- Tab body: scenarios + split panes (driven by the demo) -->
+                    <div class="relative font-mono text-[12.5px] leading-relaxed h-[440px]" id="tabbody"></div>
                 </div>
 
                 <!-- Floating label -->
@@ -773,116 +776,220 @@
 
     <!-- Scripts -->
     <script>
-        // ── Live "Claude Code → sideshell" session demo (auto-plays, loops) ──
+        // ── Live "Claude Code → sideshell" demo: tabs, scenarios, real split ──
         const term = document.getElementById('terminal');
+        const tabbar = document.getElementById('tabbar');
+        const tabbody = document.getElementById('tabbody');
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-        const toBottom = () => { term.scrollTop = term.scrollHeight; };
 
-        function addLine(html) {
+        let tabs = [];
+        let activeTab = -1;
+
+        function resetTerminal() {
+            tabbar.innerHTML = '';
+            tabbody.innerHTML = '';
+            tabs = [];
+            activeTab = -1;
+        }
+
+        function activate(i) {
+            activeTab = i;
+            tabs.forEach((t, idx) => {
+                const on = idx === i;
+                t.body.style.opacity = on ? '1' : '0';
+                t.body.style.pointerEvents = on ? 'auto' : 'none';
+                t.chip.style.color = on ? '#e2e8f0' : '#64748b';
+                t.chip.style.background = on ? '#0d1117' : 'transparent';
+                t.chip.style.borderBottom = on ? '2px solid #38bdf8' : '2px solid transparent';
+            });
+        }
+
+        // Open a new terminal tab; returns its primary (left) pane.
+        function openTab(title) {
+            const chip = document.createElement('div');
+            chip.className = 'flex items-center gap-2 px-3 py-1.5 rounded-t-md cursor-default transition-colors';
+            chip.style.borderBottom = '2px solid transparent';
+            chip.innerHTML =
+                '<span class="w-1.5 h-1.5 rounded-full bg-shell-green"></span>' +
+                '<span>' + title + '</span>';
+            tabbar.appendChild(chip);
+
+            const body = document.createElement('div');
+            body.className = 'absolute inset-0 flex transition-opacity duration-300';
+            const paneL = document.createElement('div');
+            paneL.className = 'pane flex-1 min-w-0 overflow-y-auto p-4 whitespace-pre-wrap';
+            body.appendChild(paneL);
+            tabbody.appendChild(body);
+
+            const tab = { chip, body, paneL, paneR: null };
+            tabs.push(tab);
+            activate(tabs.length - 1);
+            return tab;
+        }
+
+        // Animate a horizontal split into a tab; returns the new right pane.
+        async function splitTab(tab, headerHtml) {
+            const divider = document.createElement('div');
+            divider.className = 'self-stretch w-px bg-shell-border';
+            divider.style.opacity = '0';
+            divider.style.transition = 'opacity .4s ease';
+            const paneR = document.createElement('div');
+            paneR.className = 'pane min-w-0 overflow-y-auto p-4 whitespace-pre-wrap';
+            paneR.style.cssText = 'flex:0 0 0%; opacity:0; transition: flex-basis .55s ease, opacity .5s ease;';
+            if (headerHtml) {
+                const h = document.createElement('div');
+                h.innerHTML = headerHtml;
+                paneR.appendChild(h);
+            }
+            tab.body.appendChild(divider);
+            tab.body.appendChild(paneR);
+            await sleep(60);
+            divider.style.opacity = '1';
+            paneR.style.flex = '0 0 50%';
+            paneR.style.opacity = '1';
+            await sleep(650);
+            tab.paneR = paneR;
+            return paneR;
+        }
+
+        function scrollPane(p) { p.scrollTop = p.scrollHeight; }
+
+        function line(pane, html) {
             const d = document.createElement('div');
             d.innerHTML = html === '' ? '&nbsp;' : html;
-            term.appendChild(d);
-            toBottom();
+            pane.appendChild(d);
+            scrollPane(pane);
             return d;
         }
 
-        async function typeInto(el, text, base) {
-            for (const ch of text) {
-                el.textContent += ch;
-                toBottom();
-                await sleep(base + Math.random() * 55);
-            }
+        async function emit(pane, lines, delay) {
+            for (const l of lines) { line(pane, l); await sleep(delay || 80); }
         }
 
-        // Shell prompt (sideshell terminal) and Claude Code input prompt
-        const SHELL_PROMPT =
-            '<span class="text-shell-green">you</span><span class="text-shell-muted">@mac</span> <span class="text-shell-accent">~/project</span> <span class="text-shell-muted">$</span> ';
-        const CLAUDE_PROMPT = '<span style="color:#d97757">&gt;</span> ';
-
-        async function typedCommand(promptHtml, cmd) {
-            const wrap = addLine(
-                promptHtml +
-                '<span class="text-white"></span><span class="cursor-blink text-shell-accent">▋</span>'
-            );
-            const span = wrap.querySelector('.text-white');
+        // Typewriter a command after a prompt, into a pane.
+        async function typeCmd(pane, promptHtml, cmd, base) {
+            const wrap = line(pane, promptHtml + '<span class="cmd text-white"></span><span class="cursor-blink text-shell-accent">▋</span>');
+            const span = wrap.querySelector('.cmd');
             const cur = wrap.querySelector('.cursor-blink');
-            await typeInto(span, cmd, 38);
+            for (const ch of cmd) { span.textContent += ch; scrollPane(pane); await sleep((base || 32) + Math.random() * 46); }
             cur.remove();
-            await sleep(360);
+            await sleep(300);
         }
 
-        async function emit(lines, delay) {
-            for (const l of lines) {
-                addLine(l);
-                await sleep(delay);
-            }
+        const CLAUDE = '<span style="color:#d97757">&gt;</span> ';
+        const sh = (host) => '<span class="text-shell-green">' + (host || 'you@mac') + '</span> <span class="text-shell-accent">~</span> <span class="text-shell-muted">$</span> ';
+        const reason = (t) => '<span class="text-shell-muted">  ' + t + '</span>';
+        const ok = (t) => '<span class="text-shell-green">  ✓ ' + t + '</span>';
+
+        function tool(name, arg) {
+            const a = arg ? '<span style="color:#a5b4fc">' + arg + '</span>' : '';
+            return '<span class="text-shell-muted">  ⎿ </span><span style="color:#d97757">sideshell</span>' +
+                '<span class="text-shell-muted"> · </span><span class="text-white">' + name + '</span>' +
+                '<span class="text-shell-muted">(</span>' + a + '<span class="text-shell-muted">) · MCP</span>';
         }
 
-        // An MCP tool-call line, Claude-Code style
-        function toolCall(name, arg) {
-            const a = arg ? `<span style="color:#a5b4fc">${arg}</span>` : '';
-            return (
-                '<span class="text-shell-muted">  ⎿ </span>' +
-                '<span style="color:#d97757">sideshell</span>' +
-                '<span class="text-shell-muted"> · </span>' +
-                `<span class="text-white">${name}</span>` +
-                '<span class="text-shell-muted">(</span>' + a + '<span class="text-shell-muted">)</span>' +
-                '<span class="text-shell-muted"> · MCP</span>'
-            );
+        async function banner(pane) {
+            await emit(pane, [
+                '<span style="color:#d97757"> ▐▛███▜▌</span>   <span class="text-white font-semibold">Claude Code</span> <span class="text-shell-muted">v2.x · Opus 4.8</span>',
+                '<span style="color:#d97757">▝▜█████▛▘</span>  <span class="text-shell-muted">sideshell MCP connected · 8 backends</span>',
+                '<span style="color:#d97757">  ▘▘ ▝▝</span>',
+                '',
+            ], 120);
         }
 
-        async function runSession() {
+        // ── Scenario 1: dev server in a real split ──────────────────────────
+        async function scenarioWeb() {
+            const tab = openTab('web  ~/app');
+            const L = tab.paneL;
+            await banner(L);
+            await typeCmd(L, CLAUDE, 'spin up the vite dev server in a split so I can watch the logs while we work');
+            await emit(L, ['', reason("I'll split this tab and start the dev server in the new pane so it stays visible."), ''], 90);
+            await emit(L, [tool('split', 'direction: "h"')], 150);
+            const R = await splitTab(tab, '<span class="text-shell-muted">● %2 · ~/app</span>\n');
+            await emit(L, [ok('split — new pane %2'), '', tool('execute', 'session_id: "%2", command: "npm run dev"')], 150);
+            await typeCmd(R, sh(), 'npm run dev', 26);
+            await emit(R, [
+                '',
+                '<span class="text-shell-muted">  VITE</span> <span class="text-shell-green">v5.4.2</span>  <span class="text-shell-muted">ready in 412 ms</span>',
+                '',
+                '  <span class="text-shell-green">➜</span>  <span class="text-white">Local:</span>   <span class="text-shell-accent">http://localhost:5173/</span>',
+                '  <span class="text-shell-green">➜</span>  <span class="text-white">Network:</span> <span class="text-shell-accent">http://192.168.1.24:5173/</span>',
+                '  <span class="text-shell-muted">➜  press h + enter to show help</span>',
+                '<span class="cursor-blink text-shell-accent">▋</span>',
+            ], 110);
+            await emit(L, ['', ok('dev server live in the right pane — watch it, hit Ctrl-C anytime.')], 120);
+            await sleep(2600);
+        }
+
+        // ── Scenario 2: SSH into prod and investigate (you type the secret) ──
+        async function scenarioProd() {
+            const tab = openTab('prod  ssh');
+            const L = tab.paneL;
+            await typeCmd(L, CLAUDE, 'api p99 latency just spiked — ssh into prod-1 and find the cause');
+            await emit(L, ['', reason('Connecting to prod-1 in this tab so you can watch every command on the real box.'), '', tool('execute', 'command: "ssh deploy@prod-1"')], 130);
+            await typeCmd(L, sh(), 'ssh deploy@prod-1', 26);
+            await emit(L, [
+                "<span class=\"text-shell-muted\">deploy@prod-1's password: </span><span class=\"text-shell-muted\">••••••••</span>  <span class=\"text-shell-amber\">← you typed it · the AI never sees secrets</span>",
+                '<span class="text-shell-muted">Welcome to Ubuntu 22.04.4 LTS · last login 2h ago</span>',
+                '',
+            ], 120);
+            await emit(L, [tool('execute', 'command: "docker stats --no-stream"')], 140);
+            await typeCmd(L, sh('deploy@prod-1'), 'docker stats --no-stream', 22);
+            await emit(L, [
+                '<span class="text-shell-muted">CONTAINER   CPU %    MEM        NET I/O</span>',
+                '<span class="text-shell-amber">api         98.4%    1.82GiB    1.2GB / 4GB</span>',
+                '<span class="text-white">worker       2.1%    240MiB     22MB / 80MB</span>',
+                '',
+                reason('api is pegged. Checking its logs.'),
+                tool('execute', 'command: "docker logs --since 2m api | tail -4"'),
+                '<span class="text-shell-red" style="color:#f87171">ERROR asyncpg: connection pool exhausted (size=10, waiting=37)</span>',
+                '<span class="text-shell-muted">  at Pool.acquire (db/pool.py:88)</span>',
+                '',
+                reason('Found it — the DB pool is exhausted under load. Bumping the pool and restarting api.'),
+                tool('execute', 'command: "docker compose up -d --no-deps api"'),
+                '<span class="text-shell-muted">Recreating api … done</span>',
+                '',
+                ok('api CPU back to 6% · p99 normal. You watched the whole fix on prod, live.'),
+                '<span class="cursor-blink text-shell-accent">▋</span>',
+            ], 95);
+            await sleep(2800);
+        }
+
+        // ── Scenario 3: reclaim disk space ──────────────────────────────────
+        async function scenarioDisk() {
+            const tab = openTab('disk  cleanup');
+            const L = tab.paneL;
+            await typeCmd(L, CLAUDE, "docker is eating my disk — clean it up and show me what you freed");
+            await emit(L, ['', tool('execute', 'command: "df -h /"')], 130);
+            await typeCmd(L, sh(), 'df -h /', 26);
+            await emit(L, [
+                '<span class="text-shell-muted">Filesystem      Size   Used  Avail  Cap</span>',
+                '<span class="text-shell-amber">/dev/disk3s1   460G   431G    29G   94%</span>',
+                '',
+                tool('execute', 'command: "docker system prune -af"'),
+            ], 110);
+            await typeCmd(L, sh(), 'docker system prune -af', 22);
+            await emit(L, [
+                '<span class="text-shell-muted">Deleted images, networks &amp; build cache …</span>',
+                '<span class="text-white">Total reclaimed space: 14.21GB</span>',
+                '',
+                tool('execute', 'command: "df -h /"'),
+                '<span class="text-shell-green">/dev/disk3s1   460G   416G    44G   91%</span>',
+                '',
+                ok('freed <b>14.2 GB</b> — every command ran in front of you.'),
+                '<span class="cursor-blink text-shell-accent">▋</span>',
+            ], 100);
+            await sleep(3200);
+        }
+
+        async function runDemo() {
             // eslint-disable-next-line no-constant-condition
             while (true) {
-                term.innerHTML = '';
-
-                // Claude Code banner
-                await emit([
-                    '<span style="color:#d97757"> ▐▛███▜▌</span>   <span class="text-white font-semibold">Claude Code</span> <span class="text-shell-muted">v2.x</span>',
-                    '<span style="color:#d97757">▝▜█████▛▘</span>  <span class="text-shell-muted">Opus 4.8 · sideshell MCP connected</span>',
-                    '<span style="color:#d97757">  ▘▘ ▝▝</span>    <span class="text-shell-muted">~/project</span>',
-                    '',
-                ], 130);
-
-                // User asks Claude
-                await typedCommand(CLAUDE_PROMPT, 'docker is eating my disk — clean it up and show me what you freed');
-                await emit([
-                    '',
-                    '<span class="text-shell-muted">  I\'ll open a sideshell terminal you can watch, check usage, prune, then report back.</span>',
-                    '',
-                    toolCall('new-session', ''),
-                    '<span class="text-shell-green">  ✓ visible terminal opened · session %1</span>',
-                    '',
-                ], 110);
-
-                // Claude runs df -h via sideshell — you see the real command
-                await emit([toolCall('execute', '"df -h /"')], 130);
-                await typedCommand(SHELL_PROMPT, 'df -h /');
-                await emit([
-                    '<span class="text-shell-muted">Filesystem      Size   Used  Avail  Cap</span>',
-                    '<span class="text-shell-amber">/dev/disk3s1   460G   431G    29G   94%</span>',
-                    '',
-                ], 95);
-
-                // Prune
-                await emit([toolCall('execute', '"docker system prune -af"')], 130);
-                await typedCommand(SHELL_PROMPT, 'docker system prune -af');
-                await emit([
-                    '<span class="text-shell-muted">Deleted images, networks &amp; build cache …</span>',
-                    '<span class="text-white">Total reclaimed space: 14.21GB</span>',
-                    '',
-                ], 95);
-
-                // Re-check + report
-                await emit([
-                    toolCall('read', ''),
-                    '<span class="text-shell-green">/dev/disk3s1   460G   416G    44G   91%</span>',
-                    '',
-                    '<span class="text-shell-green">  ✓ Done — freed <b>14.2 GB</b>. You watched every command run live.</span>',
-                    '<span class="cursor-blink text-shell-accent">▋</span>',
-                ], 100);
-
-                await sleep(4500);
+                resetTerminal();
+                await scenarioWeb();
+                await scenarioProd();
+                await scenarioDisk();
+                await sleep(2500);
             }
         }
 
@@ -890,9 +997,9 @@
         const _termObserver = new IntersectionObserver((entries, obs) => {
             if (entries.some((e) => e.isIntersecting)) {
                 obs.disconnect();
-                runSession();
+                runDemo();
             }
-        }, { threshold: 0.25 });
+        }, { threshold: 0.2 });
         _termObserver.observe(term);
 
         // Copy to clipboard
