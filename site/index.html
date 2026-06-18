@@ -5,6 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>sideshell — AI sidecar terminal</title>
     <meta name="description" content="An MCP server that lets Claude, Cursor, and other AI assistants run commands in a visible, persistent terminal you control.">
+    <link rel="canonical" href="https://sideshell.dev/">
+
+    <!-- Social / Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="sideshell">
+    <meta property="og:title" content="sideshell — AI sidecar terminal">
+    <meta property="og:description" content="An MCP server that lets Claude & Cursor run commands in a visible, persistent terminal you control. 8 backends — iTerm2, tmux, Ghostty, WezTerm, Kitty, VS Code, JetBrains, maquake.">
+    <meta property="og:url" content="https://sideshell.dev/">
+    <meta property="og:image" content="https://sideshell.dev/og.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="sideshell — AI sidecar terminal">
+    <meta name="twitter:description" content="Your AI runs commands. You stay in control. A visible, persistent terminal for Claude & Cursor — 8 backends.">
+    <meta name="twitter:image" content="https://sideshell.dev/og.png">
+    <meta name="twitter:creator" content="@menemy">
+
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9608;</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -219,17 +237,13 @@
                             <div class="w-3 h-3 rounded-full bg-[#28c840]"></div>
                         </div>
                         <div class="flex-1 text-center">
-                            <span class="text-xs text-shell-muted font-mono">sideshell -- iTerm2</span>
+                            <span class="text-xs text-shell-muted font-mono">claude code &#8594; sideshell &#183; live</span>
                         </div>
                         <div class="w-12"></div>
                     </div>
 
-                    <!-- Terminal content -->
-                    <div class="p-5 font-mono text-sm leading-relaxed" id="terminal">
-                        <div class="terminal-line" data-delay="0">
-                            <span class="text-shell-green">claude</span><span class="text-shell-muted">@dev</span> <span class="text-shell-accent">~/project</span> <span class="text-shell-muted">$</span> <span class="text-white" id="typed-cmd"></span><span class="cursor-blink text-shell-accent">|</span>
-                        </div>
-                    </div>
+                    <!-- Terminal content (filled by the live session demo) -->
+                    <div class="p-5 font-mono text-[13px] leading-relaxed h-[400px] overflow-y-auto whitespace-pre-wrap" id="terminal"></div>
                 </div>
 
                 <!-- Floating label -->
@@ -759,77 +773,127 @@
 
     <!-- Scripts -->
     <script>
-        // Terminal typing animation
-        const commands = [
-            { cmd: 'npm test', delay: 60 },
-            { cmd: '', pause: 400 },
-        ];
+        // ── Live "Claude Code → sideshell" session demo (auto-plays, loops) ──
+        const term = document.getElementById('terminal');
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        const toBottom = () => { term.scrollTop = term.scrollHeight; };
 
-        const outputLines = [
-            { text: '', delay: 200 },
-            { text: 'PASS  src/auth.test.ts', color: 'text-shell-green', delay: 100 },
-            { text: 'PASS  src/api.test.ts', color: 'text-shell-green', delay: 80 },
-            { text: 'PASS  src/db.test.ts', color: 'text-shell-green', delay: 80 },
-            { text: '', delay: 100 },
-            { text: 'Test Suites:  3 passed, 3 total', color: 'text-shell-green', delay: 60 },
-            { text: 'Tests:        14 passed, 14 total', color: 'text-white', delay: 60 },
-            { text: 'Time:         2.847s', color: 'text-shell-muted', delay: 60 },
-            { text: '', delay: 300 },
-            { text: '', delay: 0, isPrompt: true },
-        ];
+        function addLine(html) {
+            const d = document.createElement('div');
+            d.innerHTML = html === '' ? '&nbsp;' : html;
+            term.appendChild(d);
+            toBottom();
+            return d;
+        }
 
-        const terminal = document.getElementById('terminal');
-        const typedCmd = document.getElementById('typed-cmd');
-        const cursor = terminal.querySelector('.cursor-blink');
-        let currentCommand = 'npm test';
-        let charIndex = 0;
-
-        function typeCommand() {
-            if (charIndex < currentCommand.length) {
-                typedCmd.textContent += currentCommand[charIndex];
-                charIndex++;
-                setTimeout(typeCommand, 40 + Math.random() * 60);
-            } else {
-                // Command typed, now "execute" it
-                setTimeout(showOutput, 500);
+        async function typeInto(el, text, base) {
+            for (const ch of text) {
+                el.textContent += ch;
+                toBottom();
+                await sleep(base + Math.random() * 55);
             }
         }
 
-        function showOutput() {
-            // Remove cursor from first line
-            cursor.remove();
+        // Shell prompt (sideshell terminal) and Claude Code input prompt
+        const SHELL_PROMPT =
+            '<span class="text-shell-green">you</span><span class="text-shell-muted">@mac</span> <span class="text-shell-accent">~/project</span> <span class="text-shell-muted">$</span> ';
+        const CLAUDE_PROMPT = '<span style="color:#d97757">&gt;</span> ';
 
-            let lineIndex = 0;
-
-            function addLine() {
-                if (lineIndex >= outputLines.length) {
-                    return;
-                }
-
-                const line = outputLines[lineIndex];
-
-                if (line.isPrompt) {
-                    const promptLine = document.createElement('div');
-                    promptLine.innerHTML = '<span class="text-shell-green">claude</span><span class="text-shell-muted">@dev</span> <span class="text-shell-accent">~/project</span> <span class="text-shell-muted">$</span> <span class="cursor-blink text-shell-accent">|</span>';
-                    terminal.appendChild(promptLine);
-                    return;
-                }
-
-                const div = document.createElement('div');
-                div.className = line.color || 'text-shell-muted';
-                div.textContent = line.text;
-                if (!line.text) div.innerHTML = '&nbsp;';
-                terminal.appendChild(div);
-
-                lineIndex++;
-                setTimeout(addLine, line.delay);
-            }
-
-            addLine();
+        async function typedCommand(promptHtml, cmd) {
+            const wrap = addLine(
+                promptHtml +
+                '<span class="text-white"></span><span class="cursor-blink text-shell-accent">▋</span>'
+            );
+            const span = wrap.querySelector('.text-white');
+            const cur = wrap.querySelector('.cursor-blink');
+            await typeInto(span, cmd, 38);
+            cur.remove();
+            await sleep(360);
         }
 
-        // Start typing after page loads
-        setTimeout(typeCommand, 800);
+        async function emit(lines, delay) {
+            for (const l of lines) {
+                addLine(l);
+                await sleep(delay);
+            }
+        }
+
+        // An MCP tool-call line, Claude-Code style
+        function toolCall(name, arg) {
+            const a = arg ? `<span style="color:#a5b4fc">${arg}</span>` : '';
+            return (
+                '<span class="text-shell-muted">  ⎿ </span>' +
+                '<span style="color:#d97757">sideshell</span>' +
+                '<span class="text-shell-muted"> · </span>' +
+                `<span class="text-white">${name}</span>` +
+                '<span class="text-shell-muted">(</span>' + a + '<span class="text-shell-muted">)</span>' +
+                '<span class="text-shell-muted"> · MCP</span>'
+            );
+        }
+
+        async function runSession() {
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+                term.innerHTML = '';
+
+                // Claude Code banner
+                await emit([
+                    '<span style="color:#d97757"> ▐▛███▜▌</span>   <span class="text-white font-semibold">Claude Code</span> <span class="text-shell-muted">v2.x</span>',
+                    '<span style="color:#d97757">▝▜█████▛▘</span>  <span class="text-shell-muted">Opus 4.8 · sideshell MCP connected</span>',
+                    '<span style="color:#d97757">  ▘▘ ▝▝</span>    <span class="text-shell-muted">~/project</span>',
+                    '',
+                ], 130);
+
+                // User asks Claude
+                await typedCommand(CLAUDE_PROMPT, 'docker is eating my disk — clean it up and show me what you freed');
+                await emit([
+                    '',
+                    '<span class="text-shell-muted">  I\'ll open a sideshell terminal you can watch, check usage, prune, then report back.</span>',
+                    '',
+                    toolCall('new-session', ''),
+                    '<span class="text-shell-green">  ✓ visible terminal opened · session %1</span>',
+                    '',
+                ], 110);
+
+                // Claude runs df -h via sideshell — you see the real command
+                await emit([toolCall('execute', '"df -h /"')], 130);
+                await typedCommand(SHELL_PROMPT, 'df -h /');
+                await emit([
+                    '<span class="text-shell-muted">Filesystem      Size   Used  Avail  Cap</span>',
+                    '<span class="text-shell-amber">/dev/disk3s1   460G   431G    29G   94%</span>',
+                    '',
+                ], 95);
+
+                // Prune
+                await emit([toolCall('execute', '"docker system prune -af"')], 130);
+                await typedCommand(SHELL_PROMPT, 'docker system prune -af');
+                await emit([
+                    '<span class="text-shell-muted">Deleted images, networks &amp; build cache …</span>',
+                    '<span class="text-white">Total reclaimed space: 14.21GB</span>',
+                    '',
+                ], 95);
+
+                // Re-check + report
+                await emit([
+                    toolCall('read', ''),
+                    '<span class="text-shell-green">/dev/disk3s1   460G   416G    44G   91%</span>',
+                    '',
+                    '<span class="text-shell-green">  ✓ Done — freed <b>14.2 GB</b>. You watched every command run live.</span>',
+                    '<span class="cursor-blink text-shell-accent">▋</span>',
+                ], 100);
+
+                await sleep(4500);
+            }
+        }
+
+        // Start once the hero is on screen (kinder to mobile / battery)
+        const _termObserver = new IntersectionObserver((entries, obs) => {
+            if (entries.some((e) => e.isIntersecting)) {
+                obs.disconnect();
+                runSession();
+            }
+        }, { threshold: 0.25 });
+        _termObserver.observe(term);
 
         // Copy to clipboard
         function copyToClipboard(text, btn) {

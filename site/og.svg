@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="'JetBrains Mono','SF Mono',Menlo,monospace">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0a0e17"/>
+      <stop offset="100%" stop-color="#070a11"/>
+    </linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#94a3b8"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#4ade80"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- Subtle grid -->
+  <g opacity="0.05" stroke="#38bdf8" stroke-width="1">
+    <line x1="100" y1="0" x2="100" y2="630"/><line x1="300" y1="0" x2="300" y2="630"/>
+    <line x1="500" y1="0" x2="500" y2="630"/><line x1="700" y1="0" x2="700" y2="630"/>
+    <line x1="900" y1="0" x2="900" y2="630"/><line x1="1100" y1="0" x2="1100" y2="630"/>
+    <line x1="0" y1="130" x2="1200" y2="130"/><line x1="0" y1="330" x2="1200" y2="330"/>
+    <line x1="0" y1="530" x2="1200" y2="530"/>
+  </g>
+  <rect width="6" height="630" fill="url(#accent)"/>
+
+  <!-- Wordmark -->
+  <text x="90" y="150" font-size="34" fill="#38bdf8" font-weight="700">▐ sideshell</text>
+
+  <!-- Title -->
+  <text x="88" y="290" font-size="92" font-weight="800" fill="url(#title)" font-family="Inter,'Helvetica Neue',Arial,sans-serif">Your AI runs commands.</text>
+  <text x="88" y="390" font-size="92" font-weight="800" fill="url(#accent)" font-family="Inter,'Helvetica Neue',Arial,sans-serif">You stay in control.</text>
+
+  <!-- Tagline -->
+  <text x="90" y="460" font-size="30" fill="#94a3b8" font-family="Inter,'Helvetica Neue',Arial,sans-serif">An MCP server that gives Claude &amp; Cursor a visible, persistent terminal.</text>
+
+  <!-- Backend chips -->
+  <g font-size="22" fill="#64748b">
+    <text x="90" y="545">iTerm2 · tmux · Ghostty · WezTerm · Kitty · VS&#160;Code · JetBrains · maquake</text>
+  </g>
+
+  <!-- Mini terminal prompt motif -->
+  <g transform="translate(90,565)" font-size="24">
+    <text x="0" y="20" fill="#4ade80">$</text>
+    <text x="26" y="20" fill="#e2e8f0">uvx sideshell-mcp</text>
+    <rect x="262" y="2" width="13" height="24" fill="#38bdf8"/>
+  </g>
+
+  <!-- URL -->
+  <text x="1110" y="600" font-size="24" fill="#475569" text-anchor="end">sideshell.dev</text>
+</svg>
