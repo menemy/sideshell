@@ -5,6 +5,12 @@
 - ✅ 17 MCP tools for terminal automation
 - ✅ iTerm2 backend (full API support)
 - ✅ tmux backend (cross-platform)
+- ✅ WezTerm backend
+- ✅ Kitty backend
+- ✅ Ghostty backend (`ghostty_tmux` hybrid: native AppleScript splits + per-surface tmux engine)
+- ✅ maquake backend (drop-down terminal via Unix socket)
+- ✅ VS Code / Cursor backend (extension over Unix-socket bridge)
+- ✅ JetBrains IDEs backend (plugin over Unix-socket bridge)
 - ✅ TUI control (arrow keys, F1-F12, navigation keys)
 - ✅ Cursor position tracking
 - ✅ Window positioning (iTerm2)
@@ -70,8 +76,12 @@ Add notes to terminal output:
 |---------|--------|----------|
 | iTerm2 | ✅ Full | macOS |
 | tmux | ✅ Full | Cross-platform |
-| WezTerm | 🔲 Planned | Cross-platform |
-| Kitty | 🔲 Planned | Cross-platform |
+| WezTerm | ✅ Full | Cross-platform |
+| Kitty | ✅ Full | macOS, Linux |
+| Ghostty (`ghostty_tmux`) | ✅ Full | macOS (1.3+) |
+| maquake | ✅ Full | macOS |
+| VS Code / Cursor | ✅ Full | Cross-platform |
+| JetBrains IDEs | ✅ Full | Cross-platform |
 | Windows Terminal | ⚠️ Use tmux | Windows |
 
 ### 3.2 Backend-Specific Features
@@ -105,10 +115,9 @@ Add notes to terminal output:
 
 | Version | Focus | Features |
 |---------|-------|----------|
-| 1.0.0 | Initial release | 17 tools, iTerm2 + tmux |
+| 1.0.0 | Initial release | 17 tools; iTerm2, tmux, WezTerm, Kitty, Ghostty, maquake, VS Code/Cursor, JetBrains backends |
 | 1.1.0 | TUI control | Mouse, simplified window commands |
 | 1.2.0 | Triggers | Pattern → action automation |
-| 1.3.0 | WezTerm | Third backend |
 | 2.0.0 | AI features | Smart suggestions, auto-context |
 
 ---
@@ -125,7 +134,5 @@ Add notes to terminal output:
 ## Contributing
 
 Looking for contributors in:
-1. **WezTerm backend** - Cross-platform window control
-2. **Kitty backend** - kitten-based integration
-3. **Mouse control** - SGR mouse protocol implementation
-4. **Documentation** - Tutorials, videos
+1. **Mouse control** - SGR mouse protocol implementation
+2. **Documentation** - Tutorials, videos

@@ -8,12 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2025-01-06
 
 ### Added
-- Initial public release of **vibe-sideshell**
+- Initial public release of **sideshell** (distributed as `sideshell-mcp`)
 - AI sidecar terminal concept - commands run in visible, persistent terminal
-- 16 MCP tools for iTerm2 automation:
+- 17 MCP tools for terminal automation:
   - `execute` - Execute commands with optional wait, timeout, and broadcast support
   - `read` - Read terminal output
-  - `control-char` - Send control characters (Ctrl+C, Ctrl+D, etc.)
+  - `control-char` - Send control characters and special keys (Ctrl+C/D/Z, arrows, F1-F12, etc.)
   - `list` - List all windows/tabs/sessions
   - `split` - Split pane horizontally or vertically
   - `new-window` - Create new window
@@ -25,13 +25,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `get-terminal-state` - Get detailed terminal state
   - `list-color-presets` - List available color presets
   - `set-color-preset` - Apply color preset to session
-  - `show-alert` - Show iTerm2 alert dialog
+  - `show-alert` - Show alert dialog
   - `clear` - Clear terminal screen
   - `paste` - Paste text to terminal
+- MCP resources: `sideshell://sessions`, `sideshell://capabilities`,
+  `sideshell://sessions/{id}`, `sideshell://sessions/{id}/screen`
+- Pluggable backends (8): iTerm2, tmux, WezTerm, Kitty, Ghostty
+  (`ghostty_tmux` hybrid: native AppleScript splits + per-surface tmux engine),
+  maquake (drop-down terminal), VS Code/Cursor, and JetBrains IDEs
+- IDE bridge over a local Unix domain socket (`~/.sideshell/<ide>.sock`,
+  newline-delimited JSON-RPC 2.0 with a token handshake) for the VS Code/Cursor
+  extension and JetBrains plugin backends
+- Auto-detection of the active terminal/IDE backend
 - Claude Code session protection (prevents affecting Claude's terminal)
 - Focus return feature (returns focus after operations)
-- Persistent connection to iTerm2 for better performance
-- Comprehensive test suite (36 tests)
 
 ### Security
 - Automatic detection and protection of Claude Code sessions

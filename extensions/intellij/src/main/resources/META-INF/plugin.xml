@@ -6,7 +6,7 @@
     <description><![CDATA[
     Exposes JetBrains IDE terminal control for AI agents via sideshell MCP server.
     <br/><br/>
-    Provides a WebSocket bridge that lets sideshell control IDE terminals:
+    Provides a Unix socket bridge that lets sideshell control IDE terminals:
     read output, execute commands, create tabs/splits, and more.
     <br/><br/>
     Works with all JetBrains IDEs: IntelliJ IDEA, PyCharm, WebStorm, GoLand,
