@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import shutil
+from urllib.parse import unquote, urlparse
 
 from .base import (
     ControlKey,
@@ -113,6 +114,15 @@ class WezTermBackend(TerminalBackend):
             pass
         return None
 
+    @staticmethod
+    def _clean_cwd(raw: str | None) -> str:
+        """Normalize wezterm's `file://host/path` cwd URL to a plain path."""
+        if not raw:
+            return "~"
+        if raw.startswith("file://"):
+            return unquote(urlparse(raw).path) or "~"
+        return raw
+
     async def get_session(self, session_id: str | None = None) -> SessionInfo | None:
         """Get session info by pane ID."""
         try:
@@ -128,7 +138,7 @@ class WezTermBackend(TerminalBackend):
                     return SessionInfo(
                         session_id=str(pane.get("pane_id")),
                         name=pane.get("title", "Unnamed"),
-                        path=pane.get("cwd", "~"),
+                        path=self._clean_cwd(pane.get("cwd")),
                         job=pane.get("foreground_process_name", "shell"),
                         at_prompt=False,  # WezTerm doesn't expose this
                         columns=pane.get("size", {}).get("cols", 0),
@@ -156,7 +166,7 @@ class WezTermBackend(TerminalBackend):
                 tab_id = pane.get("tab_id")
                 pane_id = pane.get("pane_id")
                 title = pane.get("title", "Unnamed")
-                cwd = pane.get("cwd", "~")
+                cwd = self._clean_cwd(pane.get("cwd"))
                 process = pane.get("foreground_process_name", "shell")
 
                 if window_id != current_window:
@@ -390,7 +400,10 @@ class WezTermBackend(TerminalBackend):
         try:
             args = ["spawn", "--new-window"]
             if command:
-                args.extend(["--", command])
+                # Run via a shell so multi-word commands work; passing the raw
+                # string as PROG would make wezterm spawn a program named after
+                # the whole command line and fail.
+                args.extend(["--", "/bin/sh", "-lc", command])
 
             output = await self._wezterm(*args)
             pane_id = output.strip()
@@ -408,7 +421,7 @@ class WezTermBackend(TerminalBackend):
         try:
             args = ["spawn"]
             if command:
-                args.extend(["--", command])
+                args.extend(["--", "/bin/sh", "-lc", command])
 
             output = await self._wezterm(*args)
             pane_id = output.strip()
