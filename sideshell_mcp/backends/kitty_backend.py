@@ -89,6 +89,30 @@ class KittyBackend(TerminalBackend):
             raise RuntimeError(f"kitten error: {stderr or stdout}")
         return stdout
 
+    async def _send_text_literal(self, window_id: str, text: str) -> None:
+        """Send text to a window verbatim via `send-text --stdin`.
+
+        The positional TEXT argument of `kitten @ send-text` is interpreted with
+        Python escape rules (e.g. ``\\d``, ``\\t``, ``\\e``), which corrupts any
+        command containing backslashes. Content piped via ``--stdin`` is sent as
+        is, so all user text/commands go through this path.
+        """
+        base_cmd = self._get_kitten_path().split()
+        cmd = [*base_cmd, "@"]
+        if self._listen_on:
+            cmd.extend(["--to", self._listen_on])
+        cmd.extend(["send-text", "--match", f"id:{window_id}", "--stdin"])
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate(text.encode())
+        if proc.returncode:
+            raise RuntimeError(f"kitten error: {stderr.decode().strip()}")
+
     async def connect(self) -> bool:
         """Check kitty remote control is available."""
         try:
@@ -253,7 +277,7 @@ class KittyBackend(TerminalBackend):
             if await self.is_ai_session(window_id):
                 return "Cannot execute in AI window. Use 'split' to create a new window."
 
-            await self._kitten("send-text", "--match", f"id:{window_id}", f"{command}\n")
+            await self._send_text_literal(window_id, f"{command}\n")
 
             if wait:
                 return await self._wait_for_completion(window_id, timeout, watch_for)
@@ -323,7 +347,7 @@ class KittyBackend(TerminalBackend):
             if await self.is_ai_session(window_id):
                 return "Cannot paste to AI window. Use 'split' to create a new window."
 
-            await self._kitten("send-text", "--match", f"id:{window_id}", text)
+            await self._send_text_literal(window_id, text)
             return f"Pasted {len(text)} characters"
         except Exception as e:
             return f"Error: {e!s}"
