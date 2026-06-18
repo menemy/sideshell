@@ -375,3 +375,52 @@ class TestDetectBackend:
             with patch("sideshell_mcp.backends.ide_bridge.SIDESHELL_DIR", tmp_path):
                 result = detect_backend()
                 assert result == BackendType.VSCODE
+
+
+class TestGetBackendAutoFallback:
+    """get_backend(AUTO) must fall through when the detected backend is unusable."""
+
+    def test_falls_back_when_detected_backend_unavailable(self) -> None:
+        from sideshell_mcp.backends import detection as det
+
+        usable = MagicMock(name="UsableBackend")
+
+        def fake_instantiate(bt: BackendType) -> object:
+            if bt == BackendType.ITERM2:
+                raise ValueError("iTerm2 package not installed")
+            return usable
+
+        with (
+            patch.object(det, "detect_backend", return_value=BackendType.ITERM2),
+            patch.object(det, "list_available_backends", return_value=[BackendType.ITERM2, BackendType.TMUX]),
+            patch.object(det, "_instantiate_backend", side_effect=fake_instantiate),
+        ):
+            result = det.get_backend(BackendType.AUTO)
+        assert result is usable
+
+    def test_explicit_backend_does_not_fall_back(self) -> None:
+        from sideshell_mcp.backends import detection as det
+
+        with patch.object(det, "_instantiate_backend", side_effect=ValueError("nope")) as inst:
+            raised = False
+            try:
+                det.get_backend(BackendType.KITTY)
+            except ValueError:
+                raised = True
+        assert raised
+        inst.assert_called_once_with(BackendType.KITTY)
+
+    def test_raises_when_nothing_usable(self) -> None:
+        from sideshell_mcp.backends import detection as det
+
+        with (
+            patch.object(det, "detect_backend", return_value=BackendType.ITERM2),
+            patch.object(det, "list_available_backends", return_value=[BackendType.ITERM2]),
+            patch.object(det, "_instantiate_backend", side_effect=ValueError("x")),
+        ):
+            raised = False
+            try:
+                det.get_backend(BackendType.AUTO)
+            except ValueError:
+                raised = True
+        assert raised
