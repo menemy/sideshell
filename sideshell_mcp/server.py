@@ -1,8 +1,8 @@
-"""vibe-sideshell MCP Server with multi-backend support.
+"""sideshell MCP Server with multi-backend support.
 
-Supports:
-- iTerm2 (macOS) - rich native integration
-- tmux (cross-platform) - works over SSH
+An AI sidecar terminal: lets Claude/Cursor run commands in a visible, persistent
+terminal you control. Pluggable backends: iTerm2, tmux, Ghostty (ghostty_tmux
+hybrid), WezTerm, Kitty, maquake, and VSCode/IntelliJ via a local Unix socket.
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ from .backends.base import ControlKey, SplitDirection
 logger = logging.getLogger(__name__)
 
 
-class VibeSideshellServer:
+class SideshellServer:
     """MCP Server for terminal automation with pluggable backends."""
 
     def __init__(self, backend: TerminalBackend) -> None:
@@ -49,7 +49,6 @@ class VibeSideshellServer:
         """
         self.server = Server("sideshell")
         self.backend = backend
-        self._original_session_id: str | None = None
         self.setup_handlers()
 
     def setup_handlers(self) -> None:
@@ -411,6 +410,11 @@ class VibeSideshellServer:
                             "type": "string",
                             "description": "Session ID to close",
                         },
+                        "force": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Close even if it looks like an AI session",
+                        },
                     },
                     "required": ["session_id"],
                 },
@@ -421,9 +425,7 @@ class VibeSideshellServer:
         """Route tool call to appropriate handler."""
         # Handle return_focus for applicable tools
         return_focus = arguments.pop("return_focus", True)
-        original_session = (
-            await self.backend.get_current_active_session_id() if return_focus else None
-        )
+        original_session = await self.backend.get_current_active_session_id() if return_focus else None
 
         async def _do_return_focus(result: str) -> str:
             if return_focus and original_session:
@@ -560,9 +562,7 @@ class VibeSideshellServer:
         # Single session execute
         if not command and wait:
             # Monitor only mode
-            return await self.backend.execute_command(
-                "", session_id, wait=True, timeout=timeout, watch_for=watch_for
-            )
+            return await self.backend.execute_command("", session_id, wait=True, timeout=timeout, watch_for=watch_for)
 
         return await self.backend.execute_command(
             command or "",
@@ -605,8 +605,16 @@ def parse_args() -> argparse.Namespace:
         "-b",
         type=str,
         choices=[
-            "auto", "iterm2", "tmux", "wezterm", "kitty",
-            "ghostty", "maquake", "vscode", "intellij",
+            "auto",
+            "iterm2",
+            "tmux",
+            "wezterm",
+            "kitty",
+            "ghostty",
+            "ghostty_tmux",
+            "maquake",
+            "vscode",
+            "intellij",
         ],
         default="auto",
         help="Terminal backend to use (default: auto-detect)",
@@ -634,7 +642,7 @@ async def main_async(backend_type: BackendType = BackendType.AUTO) -> None:
     backend = get_backend(backend_type)
     logger.info(f"Using backend: {backend.name}")
 
-    server = VibeSideshellServer(backend)
+    server = SideshellServer(backend)
     await server.run()
 
 
@@ -660,6 +668,7 @@ def main() -> None:
         "wezterm": BackendType.WEZTERM,
         "kitty": BackendType.KITTY,
         "ghostty": BackendType.GHOSTTY,
+        "ghostty_tmux": BackendType.GHOSTTY,
         "maquake": BackendType.MAQUAKE,
         "vscode": BackendType.VSCODE,
         "intellij": BackendType.INTELLIJ,
@@ -678,6 +687,10 @@ def main() -> None:
 def cli_main() -> None:
     """Legacy CLI entry point."""
     main()
+
+
+# Backwards-compatible alias for the pre-rename class name.
+VibeSideshellServer = SideshellServer
 
 
 if __name__ == "__main__":
