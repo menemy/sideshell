@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/menemy/sideshell/security/advisories/new
+    about: Report security issues privately via GitHub Advisory
+  - name: Discussions
+    url: https://github.com/menemy/sideshell/discussions
+    about: Questions, ideas, and general discussion

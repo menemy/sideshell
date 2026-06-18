@@ -62,3 +62,11 @@ work_history/
 # Debug/experimental tests (not part of main test suite)
 test_*.py
 !tests/test_*.py
+# Node / VSCode extension build output (also covered by extensions/vscode/.gitignore)
+node_modules/
+out/
+*.vsix
+*.tsbuildinfo
+
+# Gradle / IntelliJ plugin build output
+.gradle/
