@@ -203,15 +203,13 @@ class TestDetectVSCode:
 
     def test_detects_via_code_binary(self) -> None:
         # Clear env vars that might trigger early return
-        env = {k: v for k, v in os.environ.items()
-               if k not in ("TERM_PROGRAM", "VSCODE_PID", "VSCODE_CWD")}
+        env = {k: v for k, v in os.environ.items() if k not in ("TERM_PROGRAM", "VSCODE_PID", "VSCODE_CWD")}
         with patch.dict(os.environ, env, clear=True):
             with patch("shutil.which", return_value="/usr/bin/code"):
                 assert detect_vscode() is True
 
     def test_not_detected_when_nothing_available(self) -> None:
-        env = {k: v for k, v in os.environ.items()
-               if k not in ("TERM_PROGRAM", "VSCODE_PID", "VSCODE_CWD")}
+        env = {k: v for k, v in os.environ.items() if k not in ("TERM_PROGRAM", "VSCODE_PID", "VSCODE_CWD")}
         with patch.dict(os.environ, env, clear=True):
             with patch("shutil.which", return_value=None):
                 with patch("sideshell_mcp.backends.ide_bridge.SIDESHELL_DIR", Path("/nonexistent")):
@@ -237,8 +235,7 @@ class TestDetectIntelliJ:
             assert detect_intellij() is True
 
     def test_not_detected_without_indicators(self) -> None:
-        env = {k: v for k, v in os.environ.items()
-               if k not in ("TERMINAL_EMULATOR", "JETBRAINS_IDE")}
+        env = {k: v for k, v in os.environ.items() if k not in ("TERMINAL_EMULATOR", "JETBRAINS_IDE")}
         with patch.dict(os.environ, env, clear=True):
             with patch("sideshell_mcp.backends.ide_bridge.SIDESHELL_DIR", Path("/nonexistent")):
                 assert detect_intellij() is False
@@ -256,15 +253,13 @@ class TestDetectGhostty:
             assert detect_ghostty() is True
 
     def test_detects_via_binary(self) -> None:
-        env = {k: v for k, v in os.environ.items()
-               if k not in ("TERM_PROGRAM", "GHOSTTY_RESOURCES_DIR")}
+        env = {k: v for k, v in os.environ.items() if k not in ("TERM_PROGRAM", "GHOSTTY_RESOURCES_DIR")}
         with patch.dict(os.environ, env, clear=True):
             with patch("shutil.which", return_value="/usr/local/bin/ghostty"):
                 assert detect_ghostty() is True
 
     def test_not_detected_when_nothing_available(self) -> None:
-        env = {k: v for k, v in os.environ.items()
-               if k not in ("TERM_PROGRAM", "GHOSTTY_RESOURCES_DIR")}
+        env = {k: v for k, v in os.environ.items() if k not in ("TERM_PROGRAM", "GHOSTTY_RESOURCES_DIR")}
         with patch.dict(os.environ, env, clear=True):
             with patch("shutil.which", return_value=None):
                 assert detect_ghostty() is False
@@ -298,11 +293,25 @@ class TestDetectBackend:
     @patch("sideshell_mcp.backends.detection.detect_parent_process")
     def test_ghostty_env_detection(self, mock_parent: MagicMock) -> None:
         mock_parent.return_value = None
-        env = {k: v for k, v in os.environ.items()
-               if k not in ("VSCODE_PID", "TERMINAL_EMULATOR", "ITERM_SESSION_ID",
-                            "TERM_PROGRAM", "WEZTERM_PANE", "KITTY_WINDOW_ID",
-                            "GHOSTTY_RESOURCES_DIR", "TMUX", "VSCODE_CWD",
-                            "LC_TERMINAL", "TERM", "WT_SESSION")}
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k
+            not in (
+                "VSCODE_PID",
+                "TERMINAL_EMULATOR",
+                "ITERM_SESSION_ID",
+                "TERM_PROGRAM",
+                "WEZTERM_PANE",
+                "KITTY_WINDOW_ID",
+                "GHOSTTY_RESOURCES_DIR",
+                "TMUX",
+                "VSCODE_CWD",
+                "LC_TERMINAL",
+                "TERM",
+                "WT_SESSION",
+            )
+        }
         env["TERM_PROGRAM"] = "ghostty"
         with patch.dict(os.environ, env, clear=True):
             with patch("sideshell_mcp.backends.ide_bridge.SIDESHELL_DIR", Path("/nonexistent")):
@@ -312,11 +321,24 @@ class TestDetectBackend:
     @patch("sideshell_mcp.backends.detection.detect_parent_process")
     def test_tmux_env_detection(self, mock_parent: MagicMock) -> None:
         mock_parent.return_value = None
-        env = {k: v for k, v in os.environ.items()
-               if k not in ("VSCODE_PID", "TERMINAL_EMULATOR", "ITERM_SESSION_ID",
-                            "TERM_PROGRAM", "WEZTERM_PANE", "KITTY_WINDOW_ID",
-                            "GHOSTTY_RESOURCES_DIR", "VSCODE_CWD",
-                            "LC_TERMINAL", "TERM", "WT_SESSION")}
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k
+            not in (
+                "VSCODE_PID",
+                "TERMINAL_EMULATOR",
+                "ITERM_SESSION_ID",
+                "TERM_PROGRAM",
+                "WEZTERM_PANE",
+                "KITTY_WINDOW_ID",
+                "GHOSTTY_RESOURCES_DIR",
+                "VSCODE_CWD",
+                "LC_TERMINAL",
+                "TERM",
+                "WT_SESSION",
+            )
+        }
         env["TMUX"] = "/tmp/tmux-501/default,12345,0"
         with patch.dict(os.environ, env, clear=True):
             with patch("sideshell_mcp.backends.ide_bridge.SIDESHELL_DIR", Path("/nonexistent")):
@@ -327,11 +349,25 @@ class TestDetectBackend:
     def test_port_file_detection(self, mock_parent: MagicMock, tmp_path: Path) -> None:
         """Port files should be checked when env vars don't match."""
         mock_parent.return_value = None
-        env = {k: v for k, v in os.environ.items()
-               if k not in ("VSCODE_PID", "TERMINAL_EMULATOR", "ITERM_SESSION_ID",
-                            "TERM_PROGRAM", "WEZTERM_PANE", "KITTY_WINDOW_ID",
-                            "GHOSTTY_RESOURCES_DIR", "TMUX", "VSCODE_CWD",
-                            "LC_TERMINAL", "TERM", "WT_SESSION")}
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k
+            not in (
+                "VSCODE_PID",
+                "TERMINAL_EMULATOR",
+                "ITERM_SESSION_ID",
+                "TERM_PROGRAM",
+                "WEZTERM_PANE",
+                "KITTY_WINDOW_ID",
+                "GHOSTTY_RESOURCES_DIR",
+                "TMUX",
+                "VSCODE_CWD",
+                "LC_TERMINAL",
+                "TERM",
+                "WT_SESSION",
+            )
+        }
         # Create vscode port file
         (tmp_path / "vscode-port").write_text(json.dumps({"port": 46117}))
 

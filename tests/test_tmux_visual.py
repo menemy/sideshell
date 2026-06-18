@@ -7,8 +7,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sideshell_mcp.backends.tmux_backend import TmuxBackend
 from sideshell_mcp.backends.base import SplitDirection
+from sideshell_mcp.backends.tmux_backend import TmuxBackend
 
 
 async def visual_demo():
@@ -17,7 +17,7 @@ async def visual_demo():
 
     session = "demo"
 
-    print(f"\n=== TMUX DEMO: TABS + SPLITS + STYLES ===")
+    print("\n=== TMUX DEMO: TABS + SPLITS + STYLES ===")
     print("Watch Terminal.app!\n")
     await asyncio.sleep(2)
 
@@ -38,7 +38,7 @@ async def visual_demo():
 
     print("▶ Running command in new tab...")
     panes_result = await backend._tmux("list-panes", "-a", "-F", "#{pane_id}")
-    panes = panes_result.strip().split('\n')
+    panes = panes_result.strip().split("\n")
     if panes:
         await backend.execute_command("echo '=== NEW TAB ==='", panes[-1])
     await asyncio.sleep(3)
@@ -61,7 +61,7 @@ async def visual_demo():
     await asyncio.sleep(2)
 
     panes_result = await backend._tmux("list-panes", "-a", "-F", "#{pane_id}")
-    panes = panes_result.strip().split('\n')
+    panes = panes_result.strip().split("\n")
     current_pane = panes[-1] if panes else None
 
     if current_pane:

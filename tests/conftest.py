@@ -1,8 +1,7 @@
 """Pytest configuration, fixtures, and shared test utilities."""
 
 import asyncio
-from typing import Generator
-
+from collections.abc import Generator
 
 # =============================================================================
 # Shared Test Configuration

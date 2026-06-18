@@ -157,11 +157,14 @@ class TestCommands:
     async def test_execute_command(self, ij):
         sessions = await ij.call("list_sessions")
         sid = sessions[0]["id"]
-        result = await ij.call("execute_command", {
-            "session_id": sid,
-            "command": "echo ij_test_ok",
-            "wait": False,
-        })
+        result = await ij.call(
+            "execute_command",
+            {
+                "session_id": sid,
+                "command": "echo ij_test_ok",
+                "wait": False,
+            },
+        )
         assert "Executed" in result
 
     @pytest.mark.asyncio
@@ -199,11 +202,14 @@ class TestCommands:
         sessions = await ij.call("list_sessions")
         sid = sessions[0]["id"]
         # Execute a command first to have something to read
-        await ij.call("execute_command", {
-            "session_id": sid,
-            "command": "echo read_test_12345",
-            "wait": False,
-        })
+        await ij.call(
+            "execute_command",
+            {
+                "session_id": sid,
+                "command": "echo read_test_12345",
+                "wait": False,
+            },
+        )
         await asyncio.sleep(0.5)
         result = await ij.call("read_terminal", {"session_id": sid, "lines": 10})
         assert isinstance(result, str)
@@ -234,9 +240,7 @@ class TestCreateClose:
         await asyncio.sleep(1)
 
         after = await ij.call("list_sessions")
-        assert len(after) > count_before, (
-            f"Expected more than {count_before} terminals, got {len(after)}"
-        )
+        assert len(after) > count_before, f"Expected more than {count_before} terminals, got {len(after)}"
 
     @pytest.mark.asyncio
     async def test_create_tab_and_close(self, ij):
@@ -261,9 +265,7 @@ class TestCreateClose:
         await asyncio.sleep(1)
 
         final = await ij.call("list_sessions")
-        assert len(final) == count_before, (
-            f"Expected {count_before} terminals after close, got {len(final)}"
-        )
+        assert len(final) == count_before, f"Expected {count_before} terminals after close, got {len(final)}"
 
 
 # ── Split Pane ───────────────────────────────────────────────────────────────
@@ -290,9 +292,7 @@ class TestSplitPane:
             if len(after) > count_before:
                 break
 
-        assert len(after) > count_before, (
-            f"Split right: expected more than {count_before}, got {len(after)}"
-        )
+        assert len(after) > count_before, f"Split right: expected more than {count_before}, got {len(after)}"
 
         # Cleanup
         new_sessions = [s for s in after if s["id"] not in [b["id"] for b in before]]
@@ -319,9 +319,7 @@ class TestSplitPane:
             if len(after) > count_before:
                 break
 
-        assert len(after) > count_before, (
-            f"Split down: expected more than {count_before}, got {len(after)}"
-        )
+        assert len(after) > count_before, f"Split down: expected more than {count_before}, got {len(after)}"
 
         # Cleanup
         new_sessions = [s for s in after if s["id"] not in [b["id"] for b in before]]
@@ -353,14 +351,20 @@ class TestSplitPane:
         assert pane1 != pane2, "Split should create a different session ID"
 
         # Execute different commands
-        await ij.call("execute_command", {
-            "session_id": pane1,
-            "command": "echo PANE_A_OK",
-        })
-        await ij.call("execute_command", {
-            "session_id": pane2,
-            "command": "echo PANE_B_OK",
-        })
+        await ij.call(
+            "execute_command",
+            {
+                "session_id": pane1,
+                "command": "echo PANE_A_OK",
+            },
+        )
+        await ij.call(
+            "execute_command",
+            {
+                "session_id": pane2,
+                "command": "echo PANE_B_OK",
+            },
+        )
 
         await asyncio.sleep(1)
 
@@ -402,9 +406,7 @@ class TestSplitPane:
 
         await asyncio.sleep(0.5)
         final = await ij.call("list_sessions")
-        assert len(final) == count_before, (
-            f"After close: expected {count_before}, got {len(final)}"
-        )
+        assert len(final) == count_before, f"After close: expected {count_before}, got {len(final)}"
 
     @pytest.mark.asyncio
     async def test_multiple_splits(self, ij):
@@ -428,9 +430,7 @@ class TestSplitPane:
             if len(after) >= count_before + 2:
                 break
 
-        assert len(after) >= count_before + 2, (
-            f"Two splits: expected {count_before + 2}+, got {len(after)}"
-        )
+        assert len(after) >= count_before + 2, f"Two splits: expected {count_before + 2}+, got {len(after)}"
 
         # Cleanup all new panes
         new_sessions = [s for s in after if s["id"] not in [b["id"] for b in before]]
@@ -470,10 +470,13 @@ class TestFocusAppearance:
     async def test_set_title(self, ij):
         sessions = await ij.call("list_sessions")
         sid = sessions[0]["id"]
-        result = await ij.call("set_appearance", {
-            "session_id": sid,
-            "title": "integration-test",
-        })
+        result = await ij.call(
+            "set_appearance",
+            {
+                "session_id": sid,
+                "title": "integration-test",
+            },
+        )
         assert isinstance(result, str)
 
 
@@ -494,10 +497,13 @@ class TestErrors:
 
     @pytest.mark.asyncio
     async def test_nonexistent_session_execute(self, ij):
-        result = await ij.call("execute_command", {
-            "session_id": "term-fake-999",
-            "command": "echo nope",
-        })
+        result = await ij.call(
+            "execute_command",
+            {
+                "session_id": "term-fake-999",
+                "command": "echo nope",
+            },
+        )
         assert "not found" in result.lower()
 
 
@@ -519,7 +525,8 @@ class TestFullLifecycle:
         assert len(after_create) > initial_count, "create_tab should add a session"
 
         # 2. Split the new tab
-        new_tab_id = [s for s in after_create if s["id"] not in [x["id"] for x in initial]][0]["id"]
+        initial_ids = [x["id"] for x in initial]
+        new_tab_id = next(s for s in after_create if s["id"] not in initial_ids)["id"]
         await ij.call("split_pane", {"session_id": new_tab_id, "direction": "v"})
 
         # Poll for split detection
@@ -535,10 +542,13 @@ class TestFullLifecycle:
         # 3. Execute in each new pane
         new_panes = [s for s in after_split if s["id"] not in [x["id"] for x in initial]]
         for i, pane in enumerate(new_panes):
-            await ij.call("execute_command", {
-                "session_id": pane["id"],
-                "command": f"echo lifecycle_pane_{i}",
-            })
+            await ij.call(
+                "execute_command",
+                {
+                    "session_id": pane["id"],
+                    "command": f"echo lifecycle_pane_{i}",
+                },
+            )
 
         await asyncio.sleep(0.5)
 
@@ -555,6 +565,4 @@ class TestFullLifecycle:
         # 6. Verify we're back to initial count
         await asyncio.sleep(0.5)
         final = await ij.call("list_sessions")
-        assert len(final) == initial_count, (
-            f"After cleanup: expected {initial_count}, got {len(final)}"
-        )
+        assert len(final) == initial_count, f"After cleanup: expected {initial_count}, got {len(final)}"

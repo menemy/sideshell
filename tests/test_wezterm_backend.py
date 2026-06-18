@@ -17,8 +17,8 @@ from pathlib import Path
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from sideshell_mcp.backends.base import ControlKey, SplitDirection
 from sideshell_mcp.backends.wezterm_backend import WezTermBackend
-from sideshell_mcp.backends.base import SplitDirection, ControlKey
 
 
 class TestWezTermBackend:
@@ -40,13 +40,13 @@ class TestWezTermBackend:
 
     def _extract_pane_id(self, result: str) -> str | None:
         """Extract pane ID from result string."""
-        match = re.search(r'pane[_\s]*(?:id)?[:\s]*(\d+)', result.lower())
+        match = re.search(r"pane[_\s]*(?:id)?[:\s]*(\d+)", result.lower())
         if match:
             return match.group(1)
-        match = re.search(r':\s*(\d+)$', result)
+        match = re.search(r":\s*(\d+)$", result)
         if match:
             return match.group(1)
-        match = re.search(r'\b(\d+)\b', result)
+        match = re.search(r"\b(\d+)\b", result)
         return match.group(1) if match else None
 
     async def setup(self):
@@ -58,20 +58,14 @@ class TestWezTermBackend:
 
         # Launch WezTerm if not running
         import shutil
+
         wezterm_path = shutil.which("wezterm")
         if wezterm_path:
             # Check if WezTerm is already running
-            check = subprocess.run(
-                [wezterm_path, "cli", "list"],
-                capture_output=True, text=True
-            )
+            check = subprocess.run([wezterm_path, "cli", "list"], capture_output=True, text=True)
             if check.returncode != 0:
                 print("Launching WezTerm...")
-                subprocess.Popen(
-                    ["open", "-a", "WezTerm"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
-                )
+                subprocess.Popen(["open", "-a", "WezTerm"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 self.wezterm_launched = True
                 await asyncio.sleep(2)  # Wait for WezTerm to start
 
@@ -105,9 +99,7 @@ class TestWezTermBackend:
         if self.wezterm_launched:
             print("Closing WezTerm...")
             subprocess.run(
-                ["osascript", "-e", 'quit app "WezTerm"'],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                ["osascript", "-e", 'quit app "WezTerm"'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
 
     def _assert(self, condition: bool, message: str):
@@ -163,11 +155,7 @@ class TestWezTermBackend:
         pane_id = self.created_panes[0]
         await self._delay()
         result = await self.backend.execute_command(
-            "echo 'wait test'",
-            pane_id,
-            wait=True,
-            timeout=10,
-            watch_for="silence"
+            "echo 'wait test'", pane_id, wait=True, timeout=10, watch_for="silence"
         )
         self._assert("Completed" in result or "wait test" in result, "Should complete with output")
 
@@ -282,7 +270,9 @@ class TestWezTermBackend:
         """Test operations on invalid session."""
         print("\n▶ test_invalid_session")
         result = await self.backend.execute_command("echo test", "99999")
-        self._assert("Error" in result or "not found" in result.lower() or "Sent" in result, "Should handle invalid pane")
+        self._assert(
+            "Error" in result or "not found" in result.lower() or "Sent" in result, "Should handle invalid pane"
+        )
 
     async def run_all(self):
         """Run all tests."""

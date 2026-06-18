@@ -26,8 +26,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sideshell_mcp.server import VibeSideshellServer
 from sideshell_mcp.backends import BackendType, get_backend
+from sideshell_mcp.server import VibeSideshellServer
 
 
 class TestResults:
@@ -48,7 +48,7 @@ class TestResults:
         print(f"  ✗ {name}: {reason}")
 
     def summary(self):
-        print(f"\n{'='*50}")
+        print(f"\n{'=' * 50}")
         print(f"Results: {self.passed} passed, {self.failed} failed")
         if self.errors:
             print("\nFailures:")
@@ -60,11 +60,11 @@ class TestResults:
 def extract_session_id(text: str) -> str | None:
     """Extract session ID from result text."""
     # iTerm2 UUID format
-    match = re.search(r'[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}', text, re.IGNORECASE)
+    match = re.search(r"[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}", text, re.IGNORECASE)
     if match:
         return match.group(0)
     # tmux pane format %N
-    match = re.search(r'%\d+', text)
+    match = re.search(r"%\d+", text)
     if match:
         return match.group(0)
     return None
@@ -130,11 +130,9 @@ async def test_all(backend_type: BackendType):
         # TEST 3: execute fire-and-forget
         # ============================================
         print("\n Test 3: execute (fire-and-forget)")
-        exec_result = await server._route_tool_call("execute", {
-            "command": "echo 'TEST_MARKER'",
-            "session_id": main_session_id,
-            "wait": False
-        })
+        exec_result = await server._route_tool_call(
+            "execute", {"command": "echo 'TEST_MARKER'", "session_id": main_session_id, "wait": False}
+        )
         if "sent" in exec_result.lower():
             results.ok("execute fire-and-forget")
         else:
@@ -146,13 +144,16 @@ async def test_all(backend_type: BackendType):
         # TEST 4: execute wait=true
         # ============================================
         print("\n Test 4: execute wait=true")
-        exec_wait = await server._route_tool_call("execute", {
-            "command": "echo 'WAIT_MARKER'",
-            "session_id": main_session_id,
-            "wait": True,
-            "timeout": 10,
-            "watch_for": "silence"
-        })
+        exec_wait = await server._route_tool_call(
+            "execute",
+            {
+                "command": "echo 'WAIT_MARKER'",
+                "session_id": main_session_id,
+                "wait": True,
+                "timeout": 10,
+                "watch_for": "silence",
+            },
+        )
         if "Completed" in exec_wait or "WAIT_MARKER" in exec_wait:
             results.ok("execute wait=true", "Output captured")
         else:
@@ -164,10 +165,7 @@ async def test_all(backend_type: BackendType):
         # TEST 5: read
         # ============================================
         print("\n Test 5: read")
-        read_result = await server._route_tool_call("read", {
-            "session_id": main_session_id,
-            "lines": 20
-        })
+        read_result = await server._route_tool_call("read", {"session_id": main_session_id, "lines": 20})
         if len(read_result) > 10:
             results.ok("read", f"{len(read_result)} chars")
         else:
@@ -177,10 +175,7 @@ async def test_all(backend_type: BackendType):
         # TEST 6: control-char
         # ============================================
         print("\n Test 6: control-char")
-        ctrl_result = await server._route_tool_call("control-char", {
-            "key": "l",
-            "session_id": main_session_id
-        })
+        ctrl_result = await server._route_tool_call("control-char", {"key": "l", "session_id": main_session_id})
         if "sent" in ctrl_result.lower() or "Ctrl" in ctrl_result:
             results.ok("control-char")
         else:
@@ -192,10 +187,7 @@ async def test_all(backend_type: BackendType):
         # TEST 7: split
         # ============================================
         print("\n Test 7: split")
-        split_result = await server._route_tool_call("split", {
-            "session_id": main_session_id,
-            "direction": "h"
-        })
+        split_result = await server._route_tool_call("split", {"session_id": main_session_id, "direction": "h"})
         split_session = extract_session_id(split_result)
         if split_session:
             test_sessions.append(split_session)
@@ -218,13 +210,16 @@ async def test_all(backend_type: BackendType):
             current_before = await backend.get_current_active_session_id()
 
             # Execute in split session with return_focus
-            exec_rf = await server._route_tool_call("execute", {
-                "command": "echo 'RETURN_FOCUS_TEST'",
-                "session_id": split_session,
-                "wait": True,
-                "timeout": 5,
-                "return_focus": True
-            })
+            exec_rf = await server._route_tool_call(
+                "execute",
+                {
+                    "command": "echo 'RETURN_FOCUS_TEST'",
+                    "session_id": split_session,
+                    "wait": True,
+                    "timeout": 5,
+                    "return_focus": True,
+                },
+            )
 
             await asyncio.sleep(0.5)
             current_after = await backend.get_current_active_session_id()
@@ -243,11 +238,9 @@ async def test_all(backend_type: BackendType):
 
         current_before = await backend.get_current_active_session_id()
 
-        split_rf = await server._route_tool_call("split", {
-            "session_id": main_session_id,
-            "direction": "v",
-            "return_focus": True
-        })
+        split_rf = await server._route_tool_call(
+            "split", {"session_id": main_session_id, "direction": "v", "return_focus": True}
+        )
         new_split = extract_session_id(split_rf)
         if new_split:
             test_sessions.append(new_split)
@@ -264,9 +257,7 @@ async def test_all(backend_type: BackendType):
         # TEST 10: focus
         # ============================================
         print("\n Test 10: focus")
-        focus_result = await server._route_tool_call("focus", {
-            "session_id": main_session_id
-        })
+        focus_result = await server._route_tool_call("focus", {"session_id": main_session_id})
         if "focus" in focus_result.lower():
             results.ok("focus")
         else:
@@ -278,9 +269,7 @@ async def test_all(backend_type: BackendType):
         # TEST 11: clear
         # ============================================
         print("\n Test 11: clear")
-        clear = await server._route_tool_call("clear", {
-            "session_id": main_session_id
-        })
+        clear = await server._route_tool_call("clear", {"session_id": main_session_id})
         if "clear" in clear.lower():
             results.ok("clear")
         else:
@@ -290,10 +279,7 @@ async def test_all(backend_type: BackendType):
         # TEST 12: paste
         # ============================================
         print("\n Test 12: paste")
-        paste = await server._route_tool_call("paste", {
-            "session_id": main_session_id,
-            "text": "echo 'PASTE_TEST'"
-        })
+        paste = await server._route_tool_call("paste", {"session_id": main_session_id, "text": "echo 'PASTE_TEST'"})
         if "paste" in paste.lower() or "characters" in paste.lower():
             results.ok("paste")
             await server._route_tool_call("control-char", {"key": "u", "session_id": main_session_id})
@@ -333,9 +319,7 @@ async def test_all(backend_type: BackendType):
         # ============================================
         print("\n Test 15: MCP Resources - list_resource_templates")
         list_templates_handler = server.server.request_handlers[ListResourceTemplatesRequest]
-        tmpl_result = await list_templates_handler(
-            ListResourceTemplatesRequest(method="resources/templates/list")
-        )
+        tmpl_result = await list_templates_handler(ListResourceTemplatesRequest(method="resources/templates/list"))
         templates = tmpl_result.root.resourceTemplates
         if len(templates) >= 2:
             template_uris = [t.uriTemplate for t in templates]
@@ -381,10 +365,7 @@ async def test_all(backend_type: BackendType):
         print("\n Test 18: read resource - session details")
         if main_session_id:
             read_result = await read_handler(
-                ReadResourceRequest(
-                    method="resources/read",
-                    params={"uri": f"sideshell://sessions/{main_session_id}"}
-                )
+                ReadResourceRequest(method="resources/read", params={"uri": f"sideshell://sessions/{main_session_id}"})
             )
             session_detail = read_result.root.contents[0].text if read_result.root.contents else ""
             if len(session_detail) > 5:
@@ -401,8 +382,7 @@ async def test_all(backend_type: BackendType):
         if main_session_id:
             read_result = await read_handler(
                 ReadResourceRequest(
-                    method="resources/read",
-                    params={"uri": f"sideshell://sessions/{main_session_id}/screen"}
+                    method="resources/read", params={"uri": f"sideshell://sessions/{main_session_id}/screen"}
                 )
             )
             screen_content = read_result.root.contents[0].text if read_result.root.contents else ""
@@ -419,9 +399,7 @@ async def test_all(backend_type: BackendType):
         print("\n Test 20: close-session (cleanup)")
         closed = 0
         for sid in test_sessions:
-            close_result = await server._route_tool_call("close-session", {
-                "session_id": sid
-            })
+            close_result = await server._route_tool_call("close-session", {"session_id": sid})
             if "close" in close_result.lower():
                 closed += 1
             await asyncio.sleep(0.2)
@@ -434,6 +412,7 @@ async def test_all(backend_type: BackendType):
     except Exception as e:
         results.fail("EXCEPTION", str(e))
         import traceback
+
         traceback.print_exc()
     finally:
         # Emergency cleanup

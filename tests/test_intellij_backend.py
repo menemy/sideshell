@@ -42,8 +42,7 @@ class TestIntelliJBackendInit:
                 assert backend.is_available is True
 
     def test_not_available_without_anything(self) -> None:
-        env = {k: v for k, v in os.environ.items()
-               if k not in ("JETBRAINS_IDE", "TERMINAL_EMULATOR")}
+        env = {k: v for k, v in os.environ.items() if k not in ("JETBRAINS_IDE", "TERMINAL_EMULATOR")}
         with patch.dict(os.environ, env, clear=True):
             with patch("sideshell_mcp.backends.ide_bridge.SIDESHELL_DIR", Path("/nonexistent")):
                 backend = IntelliJBackend()
@@ -99,10 +98,12 @@ class TestIntelliJBackendSessions:
     @pytest.mark.asyncio
     async def test_list_sessions_formats_output(self) -> None:
         backend = IntelliJBackend()
-        backend._bridge.list_sessions = AsyncMock(return_value=[
-            {"id": "term-proj-0", "name": "Local", "path": "/project", "active": True},
-            {"id": "term-proj-1", "name": "Build", "path": "/project", "active": False},
-        ])
+        backend._bridge.list_sessions = AsyncMock(
+            return_value=[
+                {"id": "term-proj-0", "name": "Local", "path": "/project", "active": True},
+                {"id": "term-proj-1", "name": "Build", "path": "/project", "active": False},
+            ]
+        )
         result = await backend.list_sessions()
         assert "Total: 2" in result
         assert "Local" in result
@@ -119,9 +120,11 @@ class TestIntelliJBackendSessions:
     @pytest.mark.asyncio
     async def test_get_session_by_id(self) -> None:
         backend = IntelliJBackend()
-        backend._bridge.list_sessions = AsyncMock(return_value=[
-            {"id": "term-proj-0", "name": "Local", "path": "/project"},
-        ])
+        backend._bridge.list_sessions = AsyncMock(
+            return_value=[
+                {"id": "term-proj-0", "name": "Local", "path": "/project"},
+            ]
+        )
         session = await backend.get_session("term-proj-0")
         assert session is not None
         assert session.session_id == "term-proj-0"
@@ -129,10 +132,12 @@ class TestIntelliJBackendSessions:
     @pytest.mark.asyncio
     async def test_get_session_returns_active(self) -> None:
         backend = IntelliJBackend()
-        backend._bridge.list_sessions = AsyncMock(return_value=[
-            {"id": "term-0", "name": "A", "path": "/"},
-            {"id": "term-1", "name": "B", "path": "/"},
-        ])
+        backend._bridge.list_sessions = AsyncMock(
+            return_value=[
+                {"id": "term-0", "name": "A", "path": "/"},
+                {"id": "term-1", "name": "B", "path": "/"},
+            ]
+        )
         backend._bridge.get_active_session = AsyncMock(return_value="term-1")
         session = await backend.get_session()
         assert session is not None
@@ -254,9 +259,7 @@ class TestIntelliJBackendOperations:
         backend._bridge.set_appearance = AsyncMock(return_value="title set")
         result = await backend.set_appearance(title="Build", badge="!")
         assert result == "title set"
-        backend._bridge.set_appearance.assert_called_once_with(
-            session_id=None, title="Build", color=None, badge="!"
-        )
+        backend._bridge.set_appearance.assert_called_once_with(session_id=None, title="Build", color=None, badge="!")
 
     @pytest.mark.asyncio
     async def test_get_terminal_state_dict(self) -> None:

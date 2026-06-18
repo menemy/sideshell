@@ -8,8 +8,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sideshell_mcp.backends.wezterm_backend import WezTermBackend
 from sideshell_mcp.backends.base import SplitDirection
+from sideshell_mcp.backends.wezterm_backend import WezTermBackend
 
 
 async def visual_demo():
@@ -31,13 +31,13 @@ async def visual_demo():
     created_panes = []
 
     def extract_pane_id(result):
-        match = re.search(r'pane[_\s]*(?:id)?[:\s]*(\d+)', result.lower())
+        match = re.search(r"pane[_\s]*(?:id)?[:\s]*(\d+)", result.lower())
         if match:
             return match.group(1)
-        match = re.search(r':\s*(\d+)$', result)
+        match = re.search(r":\s*(\d+)$", result)
         if match:
             return match.group(1)
-        match = re.search(r'\b(\d+)\b', result)
+        match = re.search(r"\b(\d+)\b", result)
         return match.group(1) if match else None
 
     # === NEW WINDOW ===

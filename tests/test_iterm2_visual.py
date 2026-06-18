@@ -7,8 +7,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sideshell_mcp.backends.iterm2_backend import ITermBackend
 from sideshell_mcp.backends.base import SplitDirection
+from sideshell_mcp.backends.iterm2_backend import ITermBackend
 
 
 async def visual_demo():
@@ -42,7 +42,8 @@ async def visual_demo():
     print(f"   {result}")
     # Extract session ID
     import re
-    match = re.search(r'([0-9a-fA-F-]{36})', result)
+
+    match = re.search(r"([0-9a-fA-F-]{36})", result)
     if match:
         created_sessions.append(match.group(1))
     await asyncio.sleep(3)
@@ -55,7 +56,7 @@ async def visual_demo():
     await asyncio.sleep(2)
     result = await backend.create_tab()
     print(f"   {result}")
-    match = re.search(r'([0-9a-fA-F-]{36})', result)
+    match = re.search(r"([0-9a-fA-F-]{36})", result)
     if match:
         created_sessions.append(match.group(1))
     await asyncio.sleep(3)
@@ -71,7 +72,7 @@ async def visual_demo():
         await asyncio.sleep(2)
         result = await backend.split_pane(SplitDirection.HORIZONTAL, session)
         print(f"   {result}")
-        match = re.search(r'([0-9a-fA-F-]{36})', result)
+        match = re.search(r"([0-9a-fA-F-]{36})", result)
         if match:
             created_sessions.append(match.group(1))
         await asyncio.sleep(3)
@@ -80,7 +81,7 @@ async def visual_demo():
         await asyncio.sleep(2)
         result = await backend.split_pane(SplitDirection.VERTICAL, session)
         print(f"   {result}")
-        match = re.search(r'([0-9a-fA-F-]{36})', result)
+        match = re.search(r"([0-9a-fA-F-]{36})", result)
         if match:
             created_sessions.append(match.group(1))
         await asyncio.sleep(3)
@@ -94,12 +95,7 @@ async def visual_demo():
 
         print("▶ Setting appearance (title, badge, color)...")
         await asyncio.sleep(2)
-        result = await backend.set_appearance(
-            session_id=session,
-            title="DEMO TAB",
-            badge="TEST",
-            color="blue"
-        )
+        result = await backend.set_appearance(session_id=session, title="DEMO TAB", badge="TEST", color="blue")
         print(f"   {result}")
         await asyncio.sleep(3)
 
@@ -122,7 +118,7 @@ async def visual_demo():
     print("▶ Listing color presets...")
     await asyncio.sleep(2)
     result = await backend.list_color_presets()
-    presets = result.split('\n')[:5]  # First 5
+    presets = result.split("\n")[:5]  # First 5
     print(f"   Found: {', '.join(presets)}...")
     await asyncio.sleep(2)
 
