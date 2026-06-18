@@ -586,14 +586,16 @@ class TerminalBackend(ABC):
                         else:
                             note = default_notes.get(ann_type, "")
 
-                        annotations.append(Annotation(
-                            line=line_num,
-                            column=match.start(),
-                            length=match.end() - match.start(),
-                            type=ann_type,
-                            text=line_text[max(0, match.start()-10):match.end()+30].strip(),
-                            note=note,
-                        ))
+                        annotations.append(
+                            Annotation(
+                                line=line_num,
+                                column=match.start(),
+                                length=match.end() - match.start(),
+                                type=ann_type,
+                                text=line_text[max(0, match.start() - 10) : match.end() + 30].strip(),
+                                note=note,
+                            )
+                        )
                         break  # Only one annotation per pattern per line
 
         return AnnotationResult(

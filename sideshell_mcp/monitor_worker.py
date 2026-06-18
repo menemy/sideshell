@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Standalone monitor worker - runs ScreenStreamer in isolated process."""
+
 import asyncio
 import json
 import sys
@@ -41,9 +42,7 @@ async def monitor_output(session_id: str, timeout: float) -> dict:
                 break
             try:
                 remaining = timeout - (now - start)
-                new_contents = await asyncio.wait_for(
-                    streamer.async_get(), timeout=min(remaining, 1.0)
-                )
+                new_contents = await asyncio.wait_for(streamer.async_get(), timeout=min(remaining, 1.0))
                 if not new_contents:
                     continue
 
@@ -54,10 +53,7 @@ async def monitor_output(session_id: str, timeout: float) -> dict:
                 current_hash = hash(tuple(current_lines))
 
                 if current_hash != initial_hash:
-                    new_content = [
-                        line for line in current_lines
-                        if line.strip() and line not in initial_lines
-                    ]
+                    new_content = [line for line in current_lines if line.strip() and line not in initial_lines]
                     elapsed = loop.time() - start
                     result = {
                         "success": True,
@@ -66,6 +62,7 @@ async def monitor_output(session_id: str, timeout: float) -> dict:
                     }
                     print(json.dumps(result), flush=True)
                     import os
+
                     os._exit(0)
             except TimeoutError:
                 continue
@@ -108,9 +105,7 @@ async def monitor_silence(session_id: str, timeout: float, threshold: float = 2.
                 break
             try:
                 remaining = timeout - (now - start)
-                new_contents = await asyncio.wait_for(
-                    streamer.async_get(), timeout=min(remaining, threshold)
-                )
+                new_contents = await asyncio.wait_for(streamer.async_get(), timeout=min(remaining, threshold))
                 if new_contents:
                     current_lines = [
                         new_contents.line(i).string if new_contents.line(i) else ""
@@ -126,6 +121,7 @@ async def monitor_silence(session_id: str, timeout: float, threshold: float = 2.
                     result = {"success": True, "silence_duration": silence_duration}
                     print(json.dumps(result), flush=True)
                     import os
+
                     os._exit(0)
 
     silence_duration = loop.time() - last_change
@@ -133,6 +129,7 @@ async def monitor_silence(session_id: str, timeout: float, threshold: float = 2.
         result = {"success": True, "silence_duration": silence_duration}
         print(json.dumps(result), flush=True)
         import os
+
         os._exit(0)
     return {"timeout": True, "elapsed": timeout}
 

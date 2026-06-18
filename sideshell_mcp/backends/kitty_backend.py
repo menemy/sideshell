@@ -66,7 +66,7 @@ class KittyBackend(TerminalBackend):
     async def _run_kitten(self, *args: str) -> tuple[int, str, str]:
         """Run kitten @ command and return (returncode, stdout, stderr)."""
         base_cmd = self._get_kitten_path().split()
-        cmd = base_cmd + ["@"]
+        cmd = [*base_cmd, "@"]
 
         if self._listen_on:
             cmd.extend(["--to", self._listen_on])
@@ -172,14 +172,10 @@ class KittyBackend(TerminalBackend):
         try:
             windows = await self._get_windows_json()
 
-            total = sum(
-                len(tab.get("windows", []))
-                for os_win in windows
-                for tab in os_win.get("tabs", [])
-            )
+            total = sum(len(tab.get("windows", [])) for os_win in windows for tab in os_win.get("tabs", []))
             result = [f"Total: {total} windows\n"]
 
-            for os_idx, os_window in enumerate(windows):
+            for os_window in windows:
                 result.append(f"\nOS Window: {os_window.get('id')}")
 
                 for tab in os_window.get("tabs", []):
@@ -557,7 +553,7 @@ class KittyBackend(TerminalBackend):
         """
         try:
             # Get colors info
-            code, stdout, stderr = await self._run_kitten("get-colors")
+            code, stdout, _stderr = await self._run_kitten("get-colors")
             if code == 0:
                 return f"Current colors:\n{stdout}\n\nTo set colors, use a .conf file path or color definitions."
             return "Use 'kitten themes' command to browse themes interactively"
