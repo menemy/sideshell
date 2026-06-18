@@ -350,6 +350,17 @@
                     <p class="text-shell-muted text-sm leading-relaxed">Intervene anytime -- enter passwords, answer prompts, Ctrl+C a runaway process. The terminal is yours.</p>
                 </div>
 
+                <!-- Feature: secrets stay yours -->
+                <div class="feature-card p-6 rounded-xl bg-shell-surface border border-shell-border">
+                    <div class="w-10 h-10 rounded-lg bg-shell-amber/10 border border-shell-amber/20 flex items-center justify-center mb-4">
+                        <svg class="w-5 h-5 text-shell-amber" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-white font-semibold mb-2">Secrets stay yours</h3>
+                    <p class="text-shell-muted text-sm leading-relaxed">When a command needs a `sudo` or SSH password, you type it into the terminal. The keystrokes go to the shell, never to the model.</p>
+                </div>
+
                 <!-- Feature 3 -->
                 <div class="feature-card p-6 rounded-xl bg-shell-surface border border-shell-border">
                     <div class="w-10 h-10 rounded-lg bg-purple-400/10 border border-purple-400/20 flex items-center justify-center mb-4">
@@ -996,6 +1007,26 @@
             await gsleep(2600);
         }
 
+        // ── Scenario: a privileged command — YOU type the sudo password ─────
+        async function scenarioSudo(tab) {
+            const L = tab.paneL;
+            await typeCmd(L, CLAUDE, 'reload nginx on staging after my config change');
+            await emit(L, ['', reason("This needs root. I'll run it in a split — you type the sudo password; it goes straight to the terminal, never to me."), '', tool('split', 'direction: "h"')], 110);
+            const R = await splitTab(tab, '<span class="text-shell-muted">● %2 · staging</span>\n');
+            await emit(L, [ok('split — new pane %2'), '', tool('execute', 'session_id: "%2", command: "sudo nginx -t && sudo systemctl reload nginx"')], 130);
+            await typeCmd(R, sh(), 'sudo nginx -t && sudo systemctl reload nginx', 16);
+            await emit(R, [
+                '<span class="text-shell-muted">[sudo] password for you: ••••••••</span>',
+                '<span class="text-shell-amber">↑ you typed it — keystrokes go to the terminal; the AI never sees it</span>',
+                '',
+                '<span class="text-shell-muted">nginx: configuration file /etc/nginx/nginx.conf test is successful</span>',
+                '<span class="text-shell-green">● nginx.service — active (running)</span>',
+                '<span class="cursor-blink text-shell-accent">▋</span>',
+            ], 95);
+            await emit(L, ['', ok('reloaded — you authorized it with your own password. I only ever saw "success".')], 110);
+            await gsleep(2800);
+        }
+
         // ── Scenario 3: reclaim disk space in a split ───────────────────────
         async function scenarioDisk(tab) {
             const L = tab.paneL;
@@ -1161,6 +1192,7 @@
         const scenarios = [
             { title: 'web', run: scenarioWeb },
             { title: 'prod', run: scenarioProd },
+            { title: 'sudo', run: scenarioSudo },
             { title: 'prod cluster', run: scenarioCluster },
             { title: 'tests', run: scenarioTests },
             { title: 'db', run: scenarioDb },
