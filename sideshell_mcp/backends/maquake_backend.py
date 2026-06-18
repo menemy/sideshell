@@ -146,13 +146,16 @@ class MaQuakeBackend(TerminalBackend):
             info = await self.get_session(session_id)
             if not info:
                 return "Session not found"
-            return json.dumps({
-                "session_id": info.session_id,
-                "name": info.name,
-                "path": info.path,
-                "job": info.job,
-                "at_prompt": info.at_prompt,
-            }, indent=2)
+            return json.dumps(
+                {
+                    "session_id": info.session_id,
+                    "name": info.name,
+                    "path": info.path,
+                    "job": info.job,
+                    "at_prompt": info.at_prompt,
+                },
+                indent=2,
+            )
 
         state_resp = await self._send({"action": "state"})
         list_resp = await self._send({"action": "list"})
@@ -183,7 +186,7 @@ class MaQuakeBackend(TerminalBackend):
         command: str,
         session_id: str | None = None,
         wait: bool = False,
-        timeout: int = 30,  # noqa: ASYNC109
+        timeout: int = 30,
         watch_for: str = "prompt",
     ) -> str:
         payload: dict = {"action": "execute", "command": command}
@@ -206,7 +209,7 @@ class MaQuakeBackend(TerminalBackend):
     async def _wait_for_completion(
         self,
         session_id: str | None,
-        timeout: int,  # noqa: ASYNC109
+        timeout: int,
         watch_for: str,
     ) -> str:
         start = asyncio.get_running_loop().time()
@@ -262,10 +265,18 @@ class MaQuakeBackend(TerminalBackend):
     async def send_control(self, key: ControlKey, session_id: str | None = None) -> str:
         # maquake supports: c, d, z, a, e, k, l, u, w, enter, esc, tab
         supported = {
-            ControlKey.C, ControlKey.D, ControlKey.Z,
-            ControlKey.A, ControlKey.E, ControlKey.K,
-            ControlKey.L, ControlKey.U, ControlKey.W,
-            ControlKey.ENTER, ControlKey.ESC, ControlKey.TAB,
+            ControlKey.C,
+            ControlKey.D,
+            ControlKey.Z,
+            ControlKey.A,
+            ControlKey.E,
+            ControlKey.K,
+            ControlKey.L,
+            ControlKey.U,
+            ControlKey.W,
+            ControlKey.ENTER,
+            ControlKey.ESC,
+            ControlKey.TAB,
         }
         if key not in supported:
             keys = ", ".join(k.value for k in supported)

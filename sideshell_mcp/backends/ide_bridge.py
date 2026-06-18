@@ -179,11 +179,7 @@ class IDEBridgeClient:
                         future = self._pending.pop(req_id)
                         if not future.done():
                             if "error" in data:
-                                future.set_exception(
-                                    IDEBridgeError(
-                                        data["error"].get("message", "Unknown error")
-                                    )
-                                )
+                                future.set_exception(IDEBridgeError(data["error"].get("message", "Unknown error")))
                             else:
                                 future.set_result(data.get("result"))
                 except json.JSONDecodeError:
@@ -193,8 +189,10 @@ class IDEBridgeClient:
             self._connected = False
 
     async def call(
-        self, method: str, params: dict[str, Any] | None = None,
-        timeout: float = 30.0,  # noqa: ASYNC109
+        self,
+        method: str,
+        params: dict[str, Any] | None = None,
+        timeout: float = 30.0,
     ) -> Any:
         """Send a JSON-RPC request and wait for response."""
         await self.ensure_connection()
@@ -220,10 +218,7 @@ class IDEBridgeClient:
             return result
         except TimeoutError:
             self._pending.pop(req_id, None)
-            raise IDEBridgeError(
-                f"Timeout waiting for {method} response "
-                f"from {self.ide_name}"
-            ) from None
+            raise IDEBridgeError(f"Timeout waiting for {method} response from {self.ide_name}") from None
         except Exception:
             self._pending.pop(req_id, None)
             raise
@@ -244,7 +239,7 @@ class IDEBridgeClient:
         command: str,
         session_id: str | None = None,
         wait: bool = False,
-        timeout: int = 30,  # noqa: ASYNC109
+        timeout: int = 30,
         watch_for: str = "prompt",
     ) -> str:
         return await self.call(
@@ -263,19 +258,26 @@ class IDEBridgeClient:
         return await self.call("send_control", {"session_id": session_id, "key": key})
 
     async def split_pane(
-        self, direction: str, session_id: str | None = None,
+        self,
+        direction: str,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         return await self.call(
-            "split_pane", {"session_id": session_id, "direction": direction},
+            "split_pane",
+            {"session_id": session_id, "direction": direction},
         )
 
     async def create_tab(
-        self, profile: str | None = None, command: str | None = None,
+        self,
+        profile: str | None = None,
+        command: str | None = None,
     ) -> dict[str, Any]:
         return await self.call("create_tab", {"profile": profile, "command": command})
 
     async def create_window(
-        self, profile: str | None = None, command: str | None = None,
+        self,
+        profile: str | None = None,
+        command: str | None = None,
     ) -> dict[str, Any]:
         return await self.call("create_window", {"profile": profile, "command": command})
 
@@ -289,7 +291,8 @@ class IDEBridgeClient:
         return await self.call("clear_terminal", {"session_id": session_id})
 
     async def get_terminal_state(
-        self, session_id: str | None = None,
+        self,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         return await self.call("get_terminal_state", {"session_id": session_id})
 
@@ -319,7 +322,10 @@ class IDEBridgeClient:
 
 
 def write_socket_file(
-    ide_name: str, socket_path: str, token: str, pid: int | None = None,
+    ide_name: str,
+    socket_path: str,
+    token: str,
+    pid: int | None = None,
 ) -> Path:
     """Write socket info file for client discovery.
 

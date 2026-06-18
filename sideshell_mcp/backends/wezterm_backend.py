@@ -52,7 +52,7 @@ class WezTermBackend(TerminalBackend):
 
     async def _run_wezterm(self, *args: str) -> tuple[int, str, str]:
         """Run wezterm cli command and return (returncode, stdout, stderr)."""
-        cmd = [self._get_wezterm_path(), "cli"] + list(args)
+        cmd = [self._get_wezterm_path(), "cli", *args]
         logger.debug(f"Running wezterm: {' '.join(cmd)}")
 
         proc = await asyncio.create_subprocess_exec(

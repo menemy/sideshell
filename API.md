@@ -1,6 +1,6 @@
 # API Reference
 
-Complete reference for all 16 tools provided by **vibe-sideshell**.
+Complete reference for all 17 tools provided by **sideshell**.
 
 ## Table of Contents
 
@@ -96,6 +96,13 @@ Send control characters or special keys to a terminal session.
 | `w` | Ctrl+W (delete word) |
 | `enter` | Enter/Return |
 | `esc` | Escape |
+| `tab` | Tab |
+| `backspace` | Backspace |
+| `up`, `down`, `left`, `right` | Arrow keys |
+| `home`, `end` | Home / End |
+| `pageup`, `pagedown` | Page Up / Page Down |
+| `insert`, `delete` | Insert / Delete |
+| `f1`–`f12` | Function keys |
 
 **Examples:**
 

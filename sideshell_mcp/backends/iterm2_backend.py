@@ -286,10 +286,22 @@ class ITermBackend(TerminalBackend):
             return f"Error getting terminal state: {e!s}"
 
     # Processes that are never AI sessions (shells, multiplexers, etc.)
-    _NON_AI_PROCESSES = frozenset({
-        "zsh", "bash", "sh", "fish", "csh", "tcsh", "dash",
-        "tmux", "screen", "login", "sshd", "ssh",
-    })
+    _NON_AI_PROCESSES = frozenset(
+        {
+            "zsh",
+            "bash",
+            "sh",
+            "fish",
+            "csh",
+            "tcsh",
+            "dash",
+            "tmux",
+            "screen",
+            "login",
+            "sshd",
+            "ssh",
+        }
+    )
 
     async def is_ai_session(self, session_id: str) -> bool:
         """Check if session is running Claude Code or other AI tool."""
@@ -425,7 +437,7 @@ class ITermBackend(TerminalBackend):
 
             if watch_for == "output":
                 if current_hash != initial_hash:
-                    new_lines = [l for l in current_lines if l.strip() and l not in initial_lines]
+                    new_lines = [line for line in current_lines if line.strip() and line not in initial_lines]
                     if new_lines:
                         return f"Output detected in {elapsed:.1f}s:\n" + "\n".join(new_lines[-20:])
                     return f"Output changed in {elapsed:.1f}s"
@@ -622,9 +634,7 @@ class ITermBackend(TerminalBackend):
             window = self.app.current_terminal_window
             if window and window.current_tab and window.current_tab.current_session:
                 current_session = window.current_tab.current_session
-                new_session = await current_session.async_split_pane(
-                    vertical=False, profile=profile
-                )
+                new_session = await current_session.async_split_pane(vertical=False, profile=profile)
                 return f"Created new session (split): {new_session.session_id}"
             elif window:
                 tab = await window.async_create_tab(profile=profile)
@@ -876,10 +886,7 @@ class ITermBackend(TerminalBackend):
             if not window:
                 return "Window not found"
 
-            frame = iterm2.Frame(
-                iterm2.Point(x, y),
-                iterm2.Size(width, height)
-            )
+            frame = iterm2.Frame(iterm2.Point(x, y), iterm2.Size(width, height))
             await window.async_set_frame(frame)
             return f"Window positioned at ({x}, {y}) with size {width}x{height}"
         except Exception as e:
@@ -944,7 +951,7 @@ class ITermBackend(TerminalBackend):
         '''
 
         try:
-            subprocess.run(
+            subprocess.run(  # noqa: ASYNC221 - one-shot osascript, runs faster than offloading to a thread
                 ["osascript", "-e", script],
                 capture_output=True,
                 check=True,
@@ -1038,7 +1045,7 @@ class ITermBackend(TerminalBackend):
 
         elif command == "tabbed":
             # Merge all windows into tabs via AppleScript
-            script = '''
+            script = """
             tell application "iTerm2"
                 activate
                 tell application "System Events"
@@ -1047,9 +1054,9 @@ class ITermBackend(TerminalBackend):
                     end tell
                 end tell
             end tell
-            '''
+            """
             try:
-                subprocess.run(
+                subprocess.run(  # noqa: ASYNC221 - one-shot osascript, runs faster than offloading to a thread
                     ["osascript", "-e", script],
                     capture_output=True,
                     check=True,
@@ -1100,7 +1107,7 @@ class ITermBackend(TerminalBackend):
                 AnnotationType.ERROR: "🔴",
                 AnnotationType.WARNING: "⚠️",
                 AnnotationType.SUCCESS: "✅",
-                AnnotationType.INFO: "ℹ️",
+                AnnotationType.INFO: "ℹ️",  # noqa: RUF001 - deliberate info glyph in the badge map
             }
 
             # Default notes
@@ -1128,8 +1135,12 @@ class ITermBackend(TerminalBackend):
                 line_annotated = False
 
                 # Priority order: ERROR > WARNING > SUCCESS > INFO
-                for ann_type in [AnnotationType.ERROR, AnnotationType.WARNING,
-                                 AnnotationType.SUCCESS, AnnotationType.INFO]:
+                for ann_type in [
+                    AnnotationType.ERROR,
+                    AnnotationType.WARNING,
+                    AnnotationType.SUCCESS,
+                    AnnotationType.INFO,
+                ]:
                     if line_annotated:
                         break
 
@@ -1152,7 +1163,7 @@ class ITermBackend(TerminalBackend):
                                 column=match.start(),
                                 length=match.end() - match.start(),
                                 type=ann_type,
-                                text=line_text[max(0, match.start()-10):match.end()+30].strip(),
+                                text=line_text[max(0, match.start() - 10) : match.end() + 30].strip(),
                                 note=full_note,
                             )
                             annotations.append(ann)
@@ -1160,10 +1171,7 @@ class ITermBackend(TerminalBackend):
                             # Add native iTerm2 annotation
                             try:
                                 start = iterm2.Point(match.start(), line_num)
-                                end = iterm2.Point(
-                                    min(match.end() + 20, len(line_text)),
-                                    line_num
-                                )
+                                end = iterm2.Point(min(match.end() + 20, len(line_text)), line_num)
                                 coord_range = iterm2.CoordRange(start, end)
                                 await session.async_add_annotation(coord_range, full_note)
                                 native_added += 1

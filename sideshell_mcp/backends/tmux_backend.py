@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import shutil
+from typing import ClassVar
 
 from .base import (
     ControlKey,
@@ -32,6 +33,47 @@ class TmuxBackend(TerminalBackend):
     - tab -> tmux window
     """
 
+    #: ControlKey -> tmux send-keys key name. tmux understands named keys
+    #: (Up, F1, PageUp, ...), so map them all correctly instead of falling back
+    #: to ``C-<key>`` (which emits invalid keys like ``C-up`` for arrows).
+    _TMUX_KEYS: ClassVar[dict[ControlKey, str]] = {
+        ControlKey.C: "C-c",
+        ControlKey.D: "C-d",
+        ControlKey.Z: "C-z",
+        ControlKey.A: "C-a",
+        ControlKey.E: "C-e",
+        ControlKey.K: "C-k",
+        ControlKey.L: "C-l",
+        ControlKey.U: "C-u",
+        ControlKey.W: "C-w",
+        ControlKey.ENTER: "Enter",
+        ControlKey.ESC: "Escape",
+        ControlKey.TAB: "Tab",
+        ControlKey.BACKSPACE: "BSpace",
+        ControlKey.UP: "Up",
+        ControlKey.DOWN: "Down",
+        ControlKey.LEFT: "Left",
+        ControlKey.RIGHT: "Right",
+        ControlKey.HOME: "Home",
+        ControlKey.END: "End",
+        ControlKey.PAGE_UP: "PageUp",
+        ControlKey.PAGE_DOWN: "PageDown",
+        ControlKey.INSERT: "IC",
+        ControlKey.DELETE: "DC",
+        ControlKey.F1: "F1",
+        ControlKey.F2: "F2",
+        ControlKey.F3: "F3",
+        ControlKey.F4: "F4",
+        ControlKey.F5: "F5",
+        ControlKey.F6: "F6",
+        ControlKey.F7: "F7",
+        ControlKey.F8: "F8",
+        ControlKey.F9: "F9",
+        ControlKey.F10: "F10",
+        ControlKey.F11: "F11",
+        ControlKey.F12: "F12",
+    }
+
     def __init__(self) -> None:
         """Initialize tmux backend."""
         self._connected = False
@@ -55,7 +97,7 @@ class TmuxBackend(TerminalBackend):
 
     async def _run_tmux(self, *args: str) -> tuple[int, str, str]:
         """Run tmux command and return (returncode, stdout, stderr)."""
-        cmd = [self._get_tmux_path()] + list(args)
+        cmd = [self._get_tmux_path(), *args]
         logger.debug(f"Running tmux: {' '.join(cmd)}")
 
         proc = await asyncio.create_subprocess_exec(
@@ -84,17 +126,17 @@ class TmuxBackend(TerminalBackend):
 
             # No sessions — create one so sideshell has something to work with
             code, _, stderr = await self._run_tmux(
-                "new-session", "-d", "-s", "sideshell",
+                "new-session",
+                "-d",
+                "-s",
+                "sideshell",
             )
             if code != 0:
                 logger.error(f"Failed to create tmux session: {stderr}")
                 return False
 
             self._connected = True
-            logger.info(
-                "Created tmux session 'sideshell'. "
-                "Watch in a new tab: tmux attach -t sideshell"
-            )
+            logger.info("Created tmux session 'sideshell'. Watch in a new tab: tmux attach -t sideshell")
             return True
         except Exception as e:
             logger.error(f"Failed to connect to tmux: {e}")
@@ -133,9 +175,10 @@ class TmuxBackend(TerminalBackend):
             # Get pane info: pane_id, pane_current_command, pane_current_path, pane_width, pane_height
             output = await self._tmux(
                 "display-message",
-                "-t", pane_id,
+                "-t",
+                pane_id,
                 "-p",
-                "#{pane_id}|#{pane_current_command}|#{pane_current_path}|#{pane_width}|#{pane_height}|#{pane_tty}"
+                "#{pane_id}|#{pane_current_command}|#{pane_current_path}|#{pane_width}|#{pane_height}|#{pane_tty}",
             )
 
             parts = output.split("|")
@@ -163,7 +206,7 @@ class TmuxBackend(TerminalBackend):
                 "list-panes",
                 "-a",
                 "-F",
-                "#{session_name}:#{window_index}.#{pane_index}|#{pane_id}|#{pane_width}x#{pane_height}|#{pane_current_command}|#{pane_current_path}"
+                "#{session_name}:#{window_index}.#{pane_index}|#{pane_id}|#{pane_width}x#{pane_height}|#{pane_current_command}|#{pane_current_path}",
             )
 
             lines = output.strip().split("\n")
@@ -206,23 +249,26 @@ class TmuxBackend(TerminalBackend):
                 info = await self.get_session(session_id)
                 if not info:
                     return "Session not found"
-                return json.dumps({
-                    "session_id": info.session_id,
-                    "name": info.name,
-                    "path": info.path,
-                    "job": info.job,
-                    "at_prompt": info.at_prompt,
-                    "columns": info.columns,
-                    "rows": info.rows,
-                    "tty": info.tty,
-                }, indent=2)
+                return json.dumps(
+                    {
+                        "session_id": info.session_id,
+                        "name": info.name,
+                        "path": info.path,
+                        "job": info.job,
+                        "at_prompt": info.at_prompt,
+                        "columns": info.columns,
+                        "rows": info.rows,
+                        "tty": info.tty,
+                    },
+                    indent=2,
+                )
 
             # Get all sessions
             output = await self._tmux(
                 "list-panes",
                 "-a",
                 "-F",
-                "#{session_name}|#{window_index}|#{window_name}|#{pane_index}|#{pane_id}|#{pane_current_command}|#{pane_current_path}|#{pane_width}|#{pane_height}"
+                "#{session_name}|#{window_index}|#{window_name}|#{pane_index}|#{pane_id}|#{pane_current_command}|#{pane_current_path}|#{pane_width}|#{pane_height}",
             )
 
             state = {
@@ -252,14 +298,16 @@ class TmuxBackend(TerminalBackend):
                             "panes": [],
                         }
 
-                    sessions_dict[sess_name]["windows"][win_key]["panes"].append({
-                        "pane_id": pane_id,
-                        "pane_index": pane_idx,
-                        "command": cmd,
-                        "path": path,
-                        "columns": int(width) if width.isdigit() else 0,
-                        "rows": int(height) if height.isdigit() else 0,
-                    })
+                    sessions_dict[sess_name]["windows"][win_key]["panes"].append(
+                        {
+                            "pane_id": pane_id,
+                            "pane_index": pane_idx,
+                            "command": cmd,
+                            "path": path,
+                            "columns": int(width) if width.isdigit() else 0,
+                            "rows": int(height) if height.isdigit() else 0,
+                        }
+                    )
                     state["total_panes"] += 1
 
             # Convert to list format
@@ -339,7 +387,9 @@ class TmuxBackend(TerminalBackend):
         start_time = asyncio.get_running_loop().time()
 
         initial_output = await self._capture_pane(pane_id)
-        await self._tmux("send-keys", "-t", pane_id, command, "Enter")
+        # Empty command = monitor-only mode; don't inject a spurious Enter.
+        if command:
+            await self._tmux("send-keys", "-t", pane_id, command, "Enter")
 
         last_output = initial_output
         last_change_time = start_time
@@ -408,30 +458,26 @@ class TmuxBackend(TerminalBackend):
         if await self.is_ai_session(pane_id):
             return "Cannot send control to AI pane. Use 'split' to create a new pane."
 
-        # tmux key mappings
-        tmux_keys = {
-            ControlKey.C: "C-c",
-            ControlKey.D: "C-d",
-            ControlKey.Z: "C-z",
-            ControlKey.A: "C-a",
-            ControlKey.E: "C-e",
-            ControlKey.K: "C-k",
-            ControlKey.L: "C-l",
-            ControlKey.U: "C-u",
-            ControlKey.W: "C-w",
-            ControlKey.ENTER: "Enter",
-            ControlKey.ESC: "Escape",
-        }
-
-        tmux_key = tmux_keys.get(key, f"C-{key.value}")
+        tmux_key = self._TMUX_KEYS.get(key, f"C-{key.value}")
         await self._tmux("send-keys", "-t", pane_id, tmux_key)
 
         if key == ControlKey.ENTER:
             return "Sent Enter key"
-        elif key == ControlKey.ESC:
+        if key == ControlKey.ESC:
             return "Sent Escape key"
-        else:
+        if key in (
+            ControlKey.C,
+            ControlKey.D,
+            ControlKey.Z,
+            ControlKey.A,
+            ControlKey.E,
+            ControlKey.K,
+            ControlKey.L,
+            ControlKey.U,
+            ControlKey.W,
+        ):
             return f"Sent Ctrl+{key.value.upper()}"
+        return f"Sent {tmux_key} key"
 
     async def read_terminal(self, lines: int = 20, session_id: str | None = None) -> str:
         """Read pane content."""

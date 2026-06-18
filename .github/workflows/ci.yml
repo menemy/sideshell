@@ -44,7 +44,7 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run MyPy
-        run: mypy python_iterm2_mcp --ignore-missing-imports
+        run: mypy sideshell_mcp --ignore-missing-imports
         continue-on-error: true  # Type errors shouldn't block CI initially
 
   build:
@@ -91,12 +91,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Run unit tests (mock only)
+      - name: Run unit tests (mocked — no live terminal required)
         run: |
-          # Skip tests that require iTerm2
-          echo "Unit tests would run here"
-          echo "Integration tests require iTerm2 and must be run locally"
-        continue-on-error: true
+          pytest \
+            tests/test_base.py \
+            tests/test_detection.py \
+            tests/test_is_ai_session.py \
+            tests/test_server_unit.py \
+            tests/test_tmux_unit.py \
+            tests/test_ghostty_tmux_unit.py \
+            tests/test_ide_bridge.py
+        # Backend/visual suites need a real terminal or IDE and are run locally.
 
   security:
     runs-on: ubuntu-latest

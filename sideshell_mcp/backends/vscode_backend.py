@@ -1,7 +1,7 @@
-"""VSCode terminal backend via WebSocket bridge.
+"""VSCode terminal backend via Unix socket bridge.
 
 This backend connects to the sideshell VSCode extension which runs
-a WebSocket server inside VSCode, exposing terminal control APIs.
+a Unix domain socket server inside VSCode, exposing terminal control APIs.
 
 Install the extension:
   code --install-extension sideshell.sideshell-terminal
@@ -32,12 +32,13 @@ To install:
 
   3. Restart VS Code or reload the window (Cmd+Shift+P -> "Reload Window")
 
-The extension starts automatically and listens on localhost:{port}.
+The extension starts automatically and listens on a Unix socket at
+~/.sideshell/vscode.sock.
 """.strip()
 
 
 class VSCodeBackend(TerminalBackend):
-    """VSCode terminal backend using WebSocket bridge to the extension."""
+    """VSCode terminal backend using Unix socket bridge to the extension."""
 
     def __init__(self) -> None:
         self._bridge = IDEBridgeClient("vscode", DEFAULT_VSCODE_PORT)
@@ -67,9 +68,7 @@ class VSCodeBackend(TerminalBackend):
         try:
             await self._bridge.ensure_connection()
         except IDEBridgeError:
-            raise IDEBridgeError(
-                INSTALL_INSTRUCTIONS.format(port=self._bridge.default_port)
-            )
+            raise IDEBridgeError(INSTALL_INSTRUCTIONS.format(port=self._bridge.default_port)) from None
 
     async def disconnect(self) -> None:
         await self._bridge.disconnect()
@@ -170,7 +169,9 @@ class VSCodeBackend(TerminalBackend):
     ) -> str:
         result = await self._bridge.split_pane(direction=direction.value, session_id=session_id)
         new_id = result.get("new_session_id", "?") if isinstance(result, dict) else result
-        return f"Split {'vertically' if direction == SplitDirection.VERTICAL else 'horizontally'}. New session: {new_id}"
+        return (
+            f"Split {'vertically' if direction == SplitDirection.VERTICAL else 'horizontally'}. New session: {new_id}"
+        )
 
     async def create_window(
         self,
@@ -207,6 +208,4 @@ class VSCodeBackend(TerminalBackend):
         color: str | None = None,
         badge: str | None = None,
     ) -> str:
-        return await self._bridge.set_appearance(
-            session_id=session_id, title=title, color=color, badge=badge
-        )
+        return await self._bridge.set_appearance(session_id=session_id, title=title, color=color, badge=badge)

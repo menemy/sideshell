@@ -16,8 +16,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from sideshell_mcp.backends.base import ControlKey, SplitDirection
 from sideshell_mcp.backends.tmux_backend import TmuxBackend
-from sideshell_mcp.backends.base import SplitDirection, ControlKey
 from tests.conftest import TEST_DELAY, BaseTestSuite
 
 
@@ -33,7 +33,7 @@ class TestTmuxBackend(BaseTestSuite):
     def _extract_pane_id(self, result: str) -> str | None:
         """Extract pane ID from result string."""
         # tmux pane IDs are like %0, %1, %2
-        match = re.search(r'(%\d+)', result)
+        match = re.search(r"(%\d+)", result)
         return match.group(1) if match else None
 
     async def setup(self):
@@ -45,15 +45,20 @@ class TestTmuxBackend(BaseTestSuite):
 
         # Open a terminal window with tmux so user can see the tests
         print("Opening terminal window with tmux...")
-        subprocess.Popen([
-            'osascript', '-e',
-            '''
+        subprocess.Popen(
+            [
+                "osascript",
+                "-e",
+                """
             tell application "Terminal"
                 activate
                 do script "tmux attach || tmux new-session"
             end tell
-            '''
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            """,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         self.terminal_opened = True
         await asyncio.sleep(1.5)  # Wait for terminal to open and tmux to attach
 
@@ -86,14 +91,19 @@ class TestTmuxBackend(BaseTestSuite):
         # Close the Terminal window we opened for the test
         if self.terminal_opened:
             print("Closing test terminal window...")
-            subprocess.run([
-                'osascript', '-e',
-                '''
+            subprocess.run(
+                [
+                    "osascript",
+                    "-e",
+                    """
                 tell application "Terminal"
                     close (every window whose name contains "tmux")
                 end tell
-                '''
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                """,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
     # --- Test Methods ---
 
@@ -139,11 +149,7 @@ class TestTmuxBackend(BaseTestSuite):
         pane_id = self.created_panes[0]
         await self._delay()
         result = await self.backend.execute_command(
-            "echo 'wait test'",
-            pane_id,
-            wait=True,
-            timeout=10,
-            watch_for="silence"
+            "echo 'wait test'", pane_id, wait=True, timeout=10, watch_for="silence"
         )
         self._assert("Completed" in result or "wait test" in result, "Should complete with output")
 
@@ -300,7 +306,9 @@ class TestTmuxBackend(BaseTestSuite):
         """Test operations on invalid session."""
         print("\n▶ test_invalid_session")
         result = await self.backend.execute_command("echo test", "%99999")
-        self._assert("Error" in result or "not found" in result.lower() or "Sent" in result, "Should handle invalid pane")
+        self._assert(
+            "Error" in result or "not found" in result.lower() or "Sent" in result, "Should handle invalid pane"
+        )
 
     async def run_all(self):
         """Run all tests."""

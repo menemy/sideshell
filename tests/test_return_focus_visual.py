@@ -17,16 +17,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sideshell_mcp.server import VibeSideshellServer
 from sideshell_mcp.backends import BackendType, get_backend
+from sideshell_mcp.server import VibeSideshellServer
 
 
 def extract_session_id(text: str) -> str | None:
     """Extract session ID from result text."""
-    match = re.search(r'[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}', text, re.IGNORECASE)
+    match = re.search(r"[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}", text, re.IGNORECASE)
     if match:
         return match.group(0)
-    match = re.search(r'%\d+', text)
+    match = re.search(r"%\d+", text)
     if match:
         return match.group(0)
     return None
@@ -66,10 +66,7 @@ async def visual_test(backend_type: BackendType):
         await asyncio.sleep(1)
 
         # Label the main pane
-        await server._route_tool_call("execute", {
-            "command": "echo '=== MAIN PANE ==='",
-            "session_id": main_id
-        })
+        await server._route_tool_call("execute", {"command": "echo '=== MAIN PANE ==='", "session_id": main_id})
 
         await asyncio.sleep(1)
 
@@ -77,11 +74,14 @@ async def visual_test(backend_type: BackendType):
         print("\n>>> Creating split pane...")
         await asyncio.sleep(1)
 
-        split_result = await server._route_tool_call("split", {
-            "session_id": main_id,
-            "direction": "h",
-            "return_focus": False  # Don't return focus
-        })
+        split_result = await server._route_tool_call(
+            "split",
+            {
+                "session_id": main_id,
+                "direction": "h",
+                "return_focus": False,  # Don't return focus
+            },
+        )
         split_id = extract_session_id(split_result)
         if split_id:
             test_sessions.append(split_id)
@@ -90,10 +90,7 @@ async def visual_test(backend_type: BackendType):
         await asyncio.sleep(1)
 
         # Label the split pane
-        await server._route_tool_call("execute", {
-            "command": "echo '=== SPLIT PANE ==='",
-            "session_id": split_id
-        })
+        await server._route_tool_call("execute", {"command": "echo '=== SPLIT PANE ==='", "session_id": split_id})
 
         await asyncio.sleep(1)
 
@@ -109,13 +106,16 @@ async def visual_test(backend_type: BackendType):
         print("Watch: focus will jump to SPLIT, run command, then return to MAIN")
         await asyncio.sleep(2)
 
-        result = await server._route_tool_call("execute", {
-            "command": "echo 'Running in SPLIT pane...' && sleep 1 && echo 'Done!'",
-            "session_id": split_id,
-            "wait": True,
-            "timeout": 10,
-            "return_focus": True
-        })
+        result = await server._route_tool_call(
+            "execute",
+            {
+                "command": "echo 'Running in SPLIT pane...' && sleep 1 && echo 'Done!'",
+                "session_id": split_id,
+                "wait": True,
+                "timeout": 10,
+                "return_focus": True,
+            },
+        )
 
         print(f"\n    Result: {'Focus returned!' if 'focus returned' in result.lower() else result[:50]}")
         await asyncio.sleep(2)
@@ -127,11 +127,7 @@ async def visual_test(backend_type: BackendType):
         print("Watch: new pane will appear, then focus returns to current pane")
         await asyncio.sleep(2)
 
-        result = await server._route_tool_call("split", {
-            "session_id": main_id,
-            "direction": "v",
-            "return_focus": True
-        })
+        result = await server._route_tool_call("split", {"session_id": main_id, "direction": "v", "return_focus": True})
         new_split = extract_session_id(result)
         if new_split:
             test_sessions.append(new_split)
@@ -146,15 +142,18 @@ async def visual_test(backend_type: BackendType):
         print("Watch: focus will stay in SPLIT pane after command")
         await asyncio.sleep(2)
 
-        result = await server._route_tool_call("execute", {
-            "command": "echo 'Focus should STAY here'",
-            "session_id": split_id,
-            "wait": True,
-            "timeout": 10,
-            "return_focus": False
-        })
+        result = await server._route_tool_call(
+            "execute",
+            {
+                "command": "echo 'Focus should STAY here'",
+                "session_id": split_id,
+                "wait": True,
+                "timeout": 10,
+                "return_focus": False,
+            },
+        )
 
-        print(f"\n    Result: Focus stayed in split pane")
+        print("\n    Result: Focus stayed in split pane")
         await asyncio.sleep(2)
 
         print("\n" + "=" * 50)

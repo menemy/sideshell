@@ -9,8 +9,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from sideshell_mcp.backends.maquake_backend import MaQuakeBackend
 from sideshell_mcp.backends.base import ControlKey, SplitDirection
+from sideshell_mcp.backends.maquake_backend import MaQuakeBackend
 
 
 async def test_all():
@@ -134,7 +134,7 @@ async def test_all():
     # Clean up: close the extra tabs we created
     # List all tabs and close the ones that aren't the original
     sessions3 = await backend.list_sessions()
-    print(f"\n--- Cleanup ---")
+    print("\n--- Cleanup ---")
     print(f"Sessions before cleanup:\n{sessions3}")
 
     # Close new tabs (close from the end to avoid index shifting)
@@ -148,7 +148,7 @@ async def test_all():
 
     # 26. disconnect
     await backend.disconnect()
-    print(f"\n26. disconnect: done")
+    print("\n26. disconnect: done")
 
     print("\n=== ALL TESTS PASSED ===")
 

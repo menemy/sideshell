@@ -16,8 +16,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from sideshell_mcp.backends.base import ControlKey, SplitDirection
 from sideshell_mcp.backends.kitty_backend import KittyBackend
-from sideshell_mcp.backends.base import SplitDirection, ControlKey
 from tests.conftest import TEST_DELAY, BaseTestSuite
 
 
@@ -33,13 +33,13 @@ class TestKittyBackend(BaseTestSuite):
 
     def _extract_window_id(self, result: str) -> str | None:
         """Extract window ID from result string."""
-        match = re.search(r'window[:\s]*(\d+)', result.lower())
+        match = re.search(r"window[:\s]*(\d+)", result.lower())
         if match:
             return match.group(1)
-        match = re.search(r':\s*(\d+)$', result)
+        match = re.search(r":\s*(\d+)$", result)
         if match:
             return match.group(1)
-        match = re.search(r'\b(\d+)\b', result)
+        match = re.search(r"\b(\d+)\b", result)
         return match.group(1) if match else None
 
     async def setup(self):
@@ -54,23 +54,20 @@ class TestKittyBackend(BaseTestSuite):
         if not connected:
             print("Launching Kitty with remote control...")
             import shutil
+
             kitty_path = shutil.which("kitty")
             if kitty_path:
                 self.kitty_process = subprocess.Popen(
-                    [kitty_path, "-o", "allow_remote_control=yes",
-                     "--listen-on", "unix:/tmp/kitty.sock"],
+                    [kitty_path, "-o", "allow_remote_control=yes", "--listen-on", "unix:/tmp/kitty.sock"],
                     stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
+                    stderr=subprocess.DEVNULL,
                 )
                 self.kitty_launched = True
                 await asyncio.sleep(2)  # Wait for Kitty to start
                 connected = await self.backend.connect()
 
         if not connected:
-            raise RuntimeError(
-                "Failed to connect to Kitty. "
-                "Make sure Kitty is installed."
-            )
+            raise RuntimeError("Failed to connect to Kitty. Make sure Kitty is installed.")
 
         await self._delay()
         result = await self.backend.create_tab()
@@ -147,11 +144,7 @@ class TestKittyBackend(BaseTestSuite):
         window_id = self.created_windows[0]
         await self._delay()
         result = await self.backend.execute_command(
-            "echo 'wait test'",
-            window_id,
-            wait=True,
-            timeout=10,
-            watch_for="silence"
+            "echo 'wait test'", window_id, wait=True, timeout=10, watch_for="silence"
         )
         self._assert("Completed" in result or "wait test" in result, "Should complete with output")
 
@@ -281,7 +274,9 @@ class TestKittyBackend(BaseTestSuite):
         """Test operations on invalid session."""
         print("\n▶ test_invalid_session")
         result = await self.backend.execute_command("echo test", "99999")
-        self._assert("Error" in result or "not found" in result.lower() or "Sent" in result, "Should handle invalid window")
+        self._assert(
+            "Error" in result or "not found" in result.lower() or "Sent" in result, "Should handle invalid window"
+        )
 
     async def run_all(self):
         """Run all tests."""

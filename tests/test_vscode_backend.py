@@ -84,10 +84,12 @@ class TestVSCodeBackendSessions:
     @pytest.mark.asyncio
     async def test_list_sessions_formats_output(self) -> None:
         backend = VSCodeBackend()
-        backend._bridge.list_sessions = AsyncMock(return_value=[
-            {"id": "term-1", "name": "bash", "path": "/home", "active": True},
-            {"id": "term-2", "name": "zsh", "path": "/tmp", "active": False},
-        ])
+        backend._bridge.list_sessions = AsyncMock(
+            return_value=[
+                {"id": "term-1", "name": "bash", "path": "/home", "active": True},
+                {"id": "term-2", "name": "zsh", "path": "/tmp", "active": False},
+            ]
+        )
         result = await backend.list_sessions()
         assert "Total: 2 terminals" in result
         assert "bash" in result
@@ -107,10 +109,12 @@ class TestVSCodeBackendSessions:
     @pytest.mark.asyncio
     async def test_get_session_by_id(self) -> None:
         backend = VSCodeBackend()
-        backend._bridge.list_sessions = AsyncMock(return_value=[
-            {"id": "term-1", "name": "bash", "path": "/home"},
-            {"id": "term-2", "name": "zsh", "path": "/tmp"},
-        ])
+        backend._bridge.list_sessions = AsyncMock(
+            return_value=[
+                {"id": "term-1", "name": "bash", "path": "/home"},
+                {"id": "term-2", "name": "zsh", "path": "/tmp"},
+            ]
+        )
         session = await backend.get_session("term-2")
         assert session is not None
         assert session.session_id == "term-2"
@@ -119,19 +123,23 @@ class TestVSCodeBackendSessions:
     @pytest.mark.asyncio
     async def test_get_session_returns_none_for_missing(self) -> None:
         backend = VSCodeBackend()
-        backend._bridge.list_sessions = AsyncMock(return_value=[
-            {"id": "term-1", "name": "bash", "path": "/home"},
-        ])
+        backend._bridge.list_sessions = AsyncMock(
+            return_value=[
+                {"id": "term-1", "name": "bash", "path": "/home"},
+            ]
+        )
         session = await backend.get_session("nonexistent")
         assert session is None
 
     @pytest.mark.asyncio
     async def test_get_session_returns_active(self) -> None:
         backend = VSCodeBackend()
-        backend._bridge.list_sessions = AsyncMock(return_value=[
-            {"id": "term-1", "name": "bash", "path": "/home"},
-            {"id": "term-2", "name": "zsh", "path": "/tmp"},
-        ])
+        backend._bridge.list_sessions = AsyncMock(
+            return_value=[
+                {"id": "term-1", "name": "bash", "path": "/home"},
+                {"id": "term-2", "name": "zsh", "path": "/tmp"},
+            ]
+        )
         backend._bridge.get_active_session = AsyncMock(return_value="term-2")
         session = await backend.get_session()
         assert session is not None
@@ -140,9 +148,11 @@ class TestVSCodeBackendSessions:
     @pytest.mark.asyncio
     async def test_get_session_fallback_to_first(self) -> None:
         backend = VSCodeBackend()
-        backend._bridge.list_sessions = AsyncMock(return_value=[
-            {"id": "term-1", "name": "bash", "path": "/home"},
-        ])
+        backend._bridge.list_sessions = AsyncMock(
+            return_value=[
+                {"id": "term-1", "name": "bash", "path": "/home"},
+            ]
+        )
         backend._bridge.get_active_session = AsyncMock(return_value=None)
         session = await backend.get_session()
         assert session is not None

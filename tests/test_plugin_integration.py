@@ -97,10 +97,12 @@ vscode_info = read_port_file("vscode")
 intellij_info = read_port_file("intellij")
 
 skip_vscode = pytest.mark.skipif(
-    vscode_info is None, reason="VSCode plugin not running",
+    vscode_info is None,
+    reason="VSCode plugin not running",
 )
 skip_intellij = pytest.mark.skipif(
-    intellij_info is None, reason="IntelliJ plugin not running",
+    intellij_info is None,
+    reason="IntelliJ plugin not running",
 )
 
 
@@ -231,11 +233,14 @@ class TestVSCodeCommands:
     async def test_execute_command(self, vscode: IDEClient) -> None:
         sessions = (await vscode.call("list_sessions"))["result"]
         sid = sessions[0]["id"]
-        resp = await vscode.call("execute_command", {
-            "session_id": sid,
-            "command": "echo sideshell_integration_test_ok",
-            "wait": False,
-        })
+        resp = await vscode.call(
+            "execute_command",
+            {
+                "session_id": sid,
+                "command": "echo sideshell_integration_test_ok",
+                "wait": False,
+            },
+        )
         assert "result" in resp
         assert "Executed" in resp["result"] or "sent" in resp["result"].lower()
 
@@ -361,9 +366,13 @@ class TestVSCodeErrors:
 
     @pytest.mark.asyncio
     async def test_nonexistent_session(self, vscode: IDEClient) -> None:
-        resp = await vscode.call("send_text", {
-            "session_id": "term-99999", "text": "hello",
-        })
+        resp = await vscode.call(
+            "send_text",
+            {
+                "session_id": "term-99999",
+                "text": "hello",
+            },
+        )
         assert "result" in resp
         assert "not found" in resp["result"].lower()
 
@@ -434,11 +443,14 @@ class TestIntelliJCommands:
         if not sessions:
             pytest.skip("No terminals open")
         sid = sessions[0]["id"]
-        resp = await intellij.call("execute_command", {
-            "session_id": sid,
-            "command": "echo ij_integration_test_ok",
-            "wait": False,
-        })
+        resp = await intellij.call(
+            "execute_command",
+            {
+                "session_id": sid,
+                "command": "echo ij_integration_test_ok",
+                "wait": False,
+            },
+        )
         assert "result" in resp
         assert "Executed" in resp["result"]
 
@@ -461,9 +473,7 @@ class TestIntelliJCommands:
         for key in ["c", "l", "a", "e", "d", "z", "k", "u", "w"]:
             resp = await intellij.call("send_control", {"session_id": sid, "key": key})
             assert "result" in resp, f"send_control({key}) failed: {resp}"
-            assert "Sent control key" in resp["result"], (
-                f"Unexpected result for key '{key}': {resp['result']}"
-            )
+            assert "Sent control key" in resp["result"], f"Unexpected result for key '{key}': {resp['result']}"
 
     @pytest.mark.asyncio
     async def test_send_control_navigation(self, intellij: IDEClient) -> None:
@@ -511,9 +521,7 @@ class TestIntelliJCreateClose:
         await asyncio.sleep(1)
 
         after = (await intellij.call("list_sessions"))["result"]
-        assert len(after) >= count_before + 1, (
-            f"Expected {count_before + 1}+ terminals, got {len(after)}"
-        )
+        assert len(after) >= count_before + 1, f"Expected {count_before + 1}+ terminals, got {len(after)}"
 
     @pytest.mark.asyncio
     async def test_focus_session(self, intellij: IDEClient) -> None:
@@ -533,10 +541,13 @@ class TestIntelliJAppearance:
         sessions = (await intellij.call("list_sessions"))["result"]
         if not sessions:
             pytest.skip("No terminals open")
-        resp = await intellij.call("set_appearance", {
-            "session_id": sessions[0]["id"],
-            "title": "test-rename",
-        })
+        resp = await intellij.call(
+            "set_appearance",
+            {
+                "session_id": sessions[0]["id"],
+                "title": "test-rename",
+            },
+        )
         assert "result" in resp
         assert isinstance(resp["result"], str)
 
@@ -588,9 +599,7 @@ class TestIntelliJTerminalType:
             pytest.skip("No terminals open")
         for session in sessions:
             assert "type" in session, f"Session missing type field: {session}"
-            assert session["type"] in ("classic", "new", "unknown"), (
-                f"Unexpected type: {session['type']}"
-            )
+            assert session["type"] in ("classic", "new", "unknown"), f"Unexpected type: {session['type']}"
 
     @pytest.mark.asyncio
     async def test_terminal_state_has_type(self, intellij: IDEClient) -> None:

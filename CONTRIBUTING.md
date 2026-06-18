@@ -18,14 +18,14 @@ For IDE plugins:
 
 ```bash
 # Clone the repository
-git clone https://github.com/anthropics/sideshell.git
+git clone https://github.com/menemy/sideshell.git
 cd sideshell
 
 # Install with uv
 uv pip install -e .
 
 # Install dev dependencies
-uv pip install pytest pytest-asyncio ruff mypy websockets
+uv pip install pytest pytest-asyncio ruff mypy
 ```
 
 ### Running Tests
@@ -59,7 +59,7 @@ mypy sideshell_mcp
 
 ### VSCode Extension
 
-The VSCode extension provides terminal control via WebSocket bridge. It works in both VSCode and Cursor.
+The VSCode extension provides terminal control via a Unix-socket bridge. It works in both VSCode and Cursor.
 
 ```bash
 cd extensions/vscode
@@ -88,7 +88,7 @@ cursor --install-extension sideshell-terminal-0.1.0.vsix --force
 **Key files:**
 - `src/extension.ts` - Extension activation, command registration
 - `src/terminal-manager.ts` - Terminal session management, output buffering
-- `src/bridge.ts` - WebSocket server (JSON-RPC 2.0)
+- `src/bridge.ts` - Unix socket server (JSON-RPC 2.0)
 - `package.json` - Extension manifest, commands, configuration
 
 ### IntelliJ Plugin
@@ -138,9 +138,9 @@ rmdir sideshell-terminal
 ```
 
 **Key files:**
-- `src/main/kotlin/com/sideshell/terminal/SideshellBridgeService.kt` - WebSocket server, JSON-RPC dispatch
+- `src/main/kotlin/com/sideshell/terminal/SideshellBridgeService.kt` - Unix socket server, JSON-RPC dispatch
 - `src/main/kotlin/com/sideshell/terminal/TerminalManagerService.kt` - Terminal session management
-- `src/main/kotlin/com/sideshell/terminal/SideshellSettings.kt` - Plugin settings (port, buffer size)
+- `src/main/kotlin/com/sideshell/terminal/SideshellSettings.kt` - Plugin settings (socket path, buffer size)
 - `src/main/kotlin/com/sideshell/terminal/SideshellStartupActivity.kt` - Auto-start on IDE launch
 - `build.gradle.kts` - Build configuration (Kotlin 2.1.0, IntelliJ Platform 2.11.0)
 
@@ -148,28 +148,36 @@ rmdir sideshell-terminal
 
 Both plugins follow the same architecture:
 
-1. **WebSocket Server** - Plugin starts a WebSocket server on `127.0.0.1:<port>`
-   - VSCode: port 46117 (default)
-   - IntelliJ: port 46118 (default)
+1. **Unix Socket Server** - Plugin starts a Unix domain socket server at
+   `~/.sideshell/<ide>.sock`
+   - VSCode: `~/.sideshell/vscode.sock`
+   - IntelliJ: `~/.sideshell/intellij.sock`
 
-2. **Port File** - Plugin writes port info to `~/.sideshell/<ide>-port`
+2. **Discovery File** - Plugin writes socket info (path + auth token) to
+   `~/.sideshell/<ide>-port`
    ```json
-   {"port": 46118, "pid": 12345, "ide": "intellij", "version": "0.1.0"}
+   {"socket": "/Users/you/.sideshell/intellij.sock", "token": "...", "pid": 12345, "ide": "intellij"}
    ```
 
-3. **JSON-RPC 2.0** - Python MCP backend connects as WebSocket client and sends requests:
+3. **Auth Handshake** - The Python MCP backend connects to the socket and sends
+   the token as the first message:
+   ```json
+   {"type": "auth", "token": "..."}
+   ```
+
+4. **JSON-RPC 2.0** - The backend then sends newline-delimited JSON-RPC requests:
    ```json
    {"jsonrpc": "2.0", "id": 1, "method": "list_sessions"}
    ```
 
-4. **Terminal Control** - Plugin translates JSON-RPC methods to IDE terminal API calls
+5. **Terminal Control** - Plugin translates JSON-RPC methods to IDE terminal API calls
 
-### Port File Discovery
+### Socket Discovery
 
 The Python backend (`sideshell_mcp/backends/ide_bridge.py`) discovers plugins via:
-1. Check `~/.sideshell/<ide>-port` for port number
-2. Fall back to default port (46117 for VSCode, 46118 for IntelliJ)
-3. Connect via WebSocket and send JSON-RPC requests
+1. Read `~/.sideshell/<ide>-port` for the socket path and auth token
+2. Fall back to the well-known socket path (`~/.sideshell/<ide>.sock`)
+3. Connect to the Unix socket, send the token handshake, then JSON-RPC requests
 
 ## Project Structure
 
@@ -180,7 +188,7 @@ sideshell/
 │   └── backends/
 │       ├── base.py            # Abstract base class, ControlKey enum
 │       ├── detection.py       # Auto-detect terminal/IDE backend
-│       ├── ide_bridge.py      # WebSocket client for IDE backends
+│       ├── ide_bridge.py      # Unix socket client for IDE backends
 │       ├── vscode_backend.py  # VSCode/Cursor backend
 │       ├── intellij_backend.py # IntelliJ/JetBrains backend
 │       ├── iterm2_backend.py  # iTerm2 backend

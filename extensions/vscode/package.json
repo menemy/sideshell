@@ -6,7 +6,7 @@
   "publisher": "sideshell",
   "repository": {
     "type": "git",
-    "url": "https://github.com/anthropics/sideshell"
+    "url": "https://github.com/menemy/sideshell"
   },
   "engines": {
     "vscode": "^1.85.0"

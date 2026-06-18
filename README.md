@@ -26,10 +26,14 @@ When AI assistants run shell commands, they execute in a hidden terminal:
 | **tmux** | macOS, Linux, WSL | ✅ Full support |
 | **WezTerm** | macOS, Linux, Windows | ✅ Full support |
 | **Kitty** | macOS, Linux | ✅ Full support |
+| **Ghostty** | macOS | ✅ Full support (`ghostty_tmux` hybrid: native AppleScript splits + per-surface tmux engine, Ghostty 1.3+) |
+| **maquake** | macOS | ✅ Full support (drop-down terminal via Unix socket) |
+| **VS Code / Cursor** | macOS, Linux, Windows | ✅ Full support (via extension, Unix-socket bridge) |
+| **JetBrains IDEs** | macOS, Linux, Windows | ✅ Full support (via plugin, Unix-socket bridge) |
 
 ## Features
 
-- **Multi-Backend** - Works with iTerm2, tmux, WezTerm, or Kitty
+- **Multi-Backend** - Works with iTerm2, tmux, WezTerm, Kitty, Ghostty, maquake, VS Code/Cursor, or JetBrains IDEs
 - **Sidecar Terminal** - AI commands run in a visible terminal pane
 - **You Stay in Control** - See everything, intervene anytime
 - **Session Persistence** - Terminal survives AI session restarts
@@ -145,20 +149,28 @@ curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh
 │   (Claude)  │     │  MCP Server  │     │   Backend   │
 └─────────────┘     └──────────────┘     └─────────────┘
                             │
-                    ┌───────┴───────┐
-                    │   Backends    │
-                    ├───────────────┤
-                    │ • iTerm2      │
-                    │ • tmux        │
-                    │ • WezTerm     │
-                    │ • Kitty       │
-                    └───────────────┘
+                    ┌───────┴────────────┐
+                    │      Backends      │
+                    ├────────────────────┤
+                    │ • iTerm2           │
+                    │ • tmux             │
+                    │ • WezTerm          │
+                    │ • Kitty            │
+                    │ • Ghostty          │
+                    │ • maquake          │
+                    │ • VS Code / Cursor │
+                    │ • JetBrains IDEs   │
+                    └────────────────────┘
 ```
+
+VS Code/Cursor and JetBrains backends talk to their IDE extension/plugin over a
+local Unix domain socket (`~/.sideshell/<ide>.sock`) using newline-delimited
+JSON-RPC 2.0 with a token handshake.
 
 ## Development
 
 ```bash
-git clone https://github.com/anthropics/sideshell
+git clone https://github.com/menemy/sideshell
 cd sideshell
 uv pip install -e ".[dev]"
 
@@ -176,7 +188,7 @@ ruff check . --fix
 ## Requirements
 
 - Python 3.11+
-- One of: iTerm2, tmux, WezTerm, or Kitty
+- One of: iTerm2, tmux, WezTerm, Kitty, Ghostty, maquake, VS Code/Cursor, or a JetBrains IDE
 
 ## License
 

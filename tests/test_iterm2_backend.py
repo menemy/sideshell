@@ -15,8 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from sideshell_mcp.backends.base import ControlKey, SplitDirection
 from sideshell_mcp.backends.iterm2_backend import ITermBackend
-from sideshell_mcp.backends.base import SplitDirection, ControlKey
 from tests.conftest import TEST_DELAY, BaseTestSuite
 
 
@@ -31,10 +31,7 @@ class TestITermBackend(BaseTestSuite):
     def _extract_session_id(self, result: str) -> str | None:
         """Extract session ID from result string."""
         # iTerm2 session IDs are UUIDs
-        match = re.search(
-            r'([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})',
-            result
-        )
+        match = re.search(r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})", result)
         return match.group(1) if match else None
 
     async def setup(self):
@@ -114,11 +111,7 @@ class TestITermBackend(BaseTestSuite):
         session_id = self.created_sessions[0]
         await self._delay()
         result = await self.backend.execute_command(
-            "echo 'wait test'",
-            session_id,
-            wait=True,
-            timeout=10,
-            watch_for="silence"
+            "echo 'wait test'", session_id, wait=True, timeout=10, watch_for="silence"
         )
         self._assert("Completed" in result or "wait test" in result, "Should complete with output")
 
@@ -239,10 +232,7 @@ class TestITermBackend(BaseTestSuite):
         session_id = self.created_sessions[0]
         await self._delay()
         result = await self.backend.set_appearance(
-            session_id=session_id,
-            title="Test Title",
-            badge="TEST",
-            color="blue"
+            session_id=session_id, title="Test Title", badge="TEST", color="blue"
         )
         await self._delay()
         self._assert("Appearance" in result or "title" in result.lower(), "Should set appearance")
@@ -272,9 +262,11 @@ class TestITermBackend(BaseTestSuite):
 
         # Try auto-dismiss - requires:
         # System Settings > Privacy > Automation > iTerm2 > System Events ✓
-        dismiss_proc = subprocess.Popen([
-            'osascript', '-e',
-            '''
+        dismiss_proc = subprocess.Popen(
+            [
+                "osascript",
+                "-e",
+                """
             repeat 20 times
                 delay 0.15
                 tell application "System Events"
@@ -290,8 +282,11 @@ class TestITermBackend(BaseTestSuite):
                     end tell
                 end tell
             end repeat
-            '''
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            """,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
         # show_alert blocks until user clicks OK
         result = await self.backend.show_alert("Test Alert", "Click OK or wait for auto-dismiss")
