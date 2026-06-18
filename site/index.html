@@ -66,6 +66,28 @@
             animation: blink 1s step-end infinite;
         }
 
+        /* macOS traffic lights — reveal ✕ / – / ⤢ on hover of the title bar */
+        .tl { position: relative; cursor: pointer; transition: filter .15s ease; }
+        .tl::after {
+            content: '';
+            position: absolute; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 8px; font-weight: 800; line-height: 1;
+            color: rgba(0, 0, 0, 0.55);
+            opacity: 0; transition: opacity .12s ease;
+        }
+        .tl-group:hover .tl { filter: brightness(1.1); }
+        .tl-group:hover .tl-close::after { content: '✕'; opacity: 1; }
+        .tl-group:hover .tl-min::after   { content: '–'; opacity: 1; }
+        .tl-group:hover .tl-max::after   { content: '⤢'; opacity: 1; }
+
+        /* Pulsing "live" indicator */
+        .live-dot { animation: livepulse 1.8s ease-in-out infinite; }
+        @keyframes livepulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.45); }
+            50% { opacity: 0.55; box-shadow: 0 0 0 4px rgba(74, 222, 128, 0); }
+        }
+
         /* Terminal typing animation */
         @keyframes typewriter {
             from { width: 0; }
@@ -231,13 +253,16 @@
                 <div class="terminal-glow terminal-scanlines relative rounded-xl bg-[#0d1117] border border-shell-border overflow-hidden" id="terminal">
                     <!-- Title bar -->
                     <div class="flex items-center gap-2 px-4 py-3 bg-[#161b22] border-b border-shell-border">
-                        <div class="flex gap-1.5">
-                            <div class="w-3 h-3 rounded-full bg-[#ff5f57]"></div>
-                            <div class="w-3 h-3 rounded-full bg-[#febc2e]"></div>
-                            <div class="w-3 h-3 rounded-full bg-[#28c840]"></div>
+                        <div class="tl-group flex gap-1.5">
+                            <div class="tl tl-close w-3 h-3 rounded-full bg-[#ff5f57]"></div>
+                            <div class="tl tl-min w-3 h-3 rounded-full bg-[#febc2e]"></div>
+                            <div class="tl tl-max w-3 h-3 rounded-full bg-[#28c840]"></div>
                         </div>
                         <div class="flex-1 text-center">
-                            <span class="text-xs text-shell-muted font-mono">claude code &#8594; sideshell &#183; live</span>
+                            <span class="inline-flex items-center gap-1.5 text-xs text-shell-muted font-mono">
+                                claude code &#8594; sideshell &#183;
+                                <span class="live-dot inline-block w-1.5 h-1.5 rounded-full bg-shell-green"></span>live
+                            </span>
                         </div>
                         <div class="w-12"></div>
                     </div>
@@ -247,14 +272,6 @@
 
                     <!-- Tab body: scenarios + split panes (driven by the demo) -->
                     <div class="relative font-mono text-[12.5px] leading-relaxed h-[440px]" id="tabbody"></div>
-                </div>
-
-                <!-- Floating label -->
-                <div class="absolute -right-4 top-8 md:-right-8 hidden lg:block">
-                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-shell-surface border border-shell-border text-xs text-shell-muted shadow-lg">
-                        <span class="w-1.5 h-1.5 rounded-full bg-shell-green"></span>
-                        visible to you
-                    </div>
                 </div>
             </div>
         </div>
@@ -782,49 +799,68 @@
         const tabbody = document.getElementById('tabbody');
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-        let tabs = [];
-        let activeTab = -1;
+        // Cancellable wait: throws if the run token changed (a click / new run).
+        let tok = 0;
+        async function gsleep(ms) { const my = tok; await sleep(ms); if (my !== tok) throw 'ABORT'; }
 
-        function resetTerminal() {
-            tabbar.innerHTML = '';
-            tabbody.innerHTML = '';
-            tabs = [];
-            activeTab = -1;
-        }
+        let tabs = [];
 
         function activate(i) {
-            activeTab = i;
             tabs.forEach((t, idx) => {
                 const on = idx === i;
                 t.body.style.opacity = on ? '1' : '0';
                 t.body.style.pointerEvents = on ? 'auto' : 'none';
+                t.chip.dataset.active = on ? '1' : '0';
                 t.chip.style.color = on ? '#e2e8f0' : '#64748b';
                 t.chip.style.background = on ? '#0d1117' : 'transparent';
                 t.chip.style.borderBottom = on ? '2px solid #38bdf8' : '2px solid transparent';
             });
         }
 
-        // Open a new terminal tab; returns its primary (left) pane.
-        function openTab(title) {
-            const chip = document.createElement('div');
-            chip.className = 'flex items-center gap-2 px-3 py-1.5 rounded-t-md cursor-default transition-colors';
-            chip.style.borderBottom = '2px solid transparent';
-            chip.innerHTML =
-                '<span class="w-1.5 h-1.5 rounded-full bg-shell-green"></span>' +
-                '<span>' + title + '</span>';
-            tabbar.appendChild(chip);
-
-            const body = document.createElement('div');
-            body.className = 'absolute inset-0 flex transition-opacity duration-300';
+        function resetTab(i) {
+            const t = tabs[i];
+            t.body.innerHTML = '';
             const paneL = document.createElement('div');
             paneL.className = 'pane flex-1 min-w-0 overflow-y-auto p-4 whitespace-pre-wrap';
-            body.appendChild(paneL);
-            tabbody.appendChild(body);
+            t.body.appendChild(paneL);
+            t.paneL = paneL;
+            t.paneR = null;
+        }
 
-            const tab = { chip, body, paneL, paneR: null };
-            tabs.push(tab);
-            activate(tabs.length - 1);
-            return tab;
+        function hideHint() { const h = document.getElementById('tabhint'); if (h) h.style.opacity = '0'; }
+
+        // Build all tabs up front so they're visible immediately and clickable.
+        function buildTabs() {
+            tabbar.innerHTML = '';
+            tabbody.innerHTML = '';
+            tabs = [];
+            scenarios.forEach((sc, i) => {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'tabchip flex items-center gap-2 px-3 py-1.5 rounded-t-md cursor-pointer transition-colors';
+                chip.style.borderBottom = '2px solid transparent';
+                chip.style.color = '#64748b';
+                chip.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-shell-green"></span><span>' + sc.title + '</span>';
+                chip.addEventListener('click', () => pick(i));
+                chip.addEventListener('mouseenter', () => { if (chip.dataset.active !== '1') chip.style.color = '#cbd5e1'; });
+                chip.addEventListener('mouseleave', () => { if (chip.dataset.active !== '1') chip.style.color = '#64748b'; });
+                tabbar.appendChild(chip);
+
+                const body = document.createElement('div');
+                body.className = 'absolute inset-0 flex transition-opacity duration-300';
+                body.style.opacity = '0';
+                tabbody.appendChild(body);
+                tabs.push({ chip, body, paneL: null, paneR: null });
+            });
+
+            const hint = document.createElement('div');
+            hint.id = 'tabhint';
+            hint.className = 'ml-auto self-center pr-1 text-[11px] text-shell-muted transition-opacity duration-500';
+            hint.innerHTML = '<span class="animate-pulse">▶ click a tab to run it &middot; or just watch</span>';
+            tabbar.appendChild(hint);
+
+            tabs.forEach((t, i) => resetTab(i));
+            activate(0);
         }
 
         // Animate a horizontal split into a tab; returns the new right pane.
@@ -843,11 +879,11 @@
             }
             tab.body.appendChild(divider);
             tab.body.appendChild(paneR);
-            await sleep(60);
+            await gsleep(60);
             divider.style.opacity = '1';
             paneR.style.flex = '0 0 50%';
             paneR.style.opacity = '1';
-            await sleep(650);
+            await gsleep(650);
             tab.paneR = paneR;
             return paneR;
         }
@@ -863,7 +899,7 @@
         }
 
         async function emit(pane, lines, delay) {
-            for (const l of lines) { line(pane, l); await sleep(delay || 80); }
+            for (const l of lines) { line(pane, l); await gsleep(delay || 80); }
         }
 
         // Typewriter a command after a prompt, into a pane.
@@ -871,9 +907,9 @@
             const wrap = line(pane, promptHtml + '<span class="cmd text-white"></span><span class="cursor-blink text-shell-accent">▋</span>');
             const span = wrap.querySelector('.cmd');
             const cur = wrap.querySelector('.cursor-blink');
-            for (const ch of cmd) { span.textContent += ch; scrollPane(pane); await sleep((base || 32) + Math.random() * 46); }
+            for (const ch of cmd) { span.textContent += ch; scrollPane(pane); await gsleep((base || 32) + Math.random() * 46); }
             cur.remove();
-            await sleep(300);
+            await gsleep(300);
         }
 
         const CLAUDE = '<span style="color:#d97757">&gt;</span> ';
@@ -898,8 +934,7 @@
         }
 
         // ── Scenario 1: dev server in a real split ──────────────────────────
-        async function scenarioWeb() {
-            const tab = openTab('web  ~/app');
+        async function scenarioWeb(tab) {
             const L = tab.paneL;
             await banner(L);
             await typeCmd(L, CLAUDE, 'spin up the vite dev server in a split so I can watch the logs while we work');
@@ -918,46 +953,51 @@
                 '<span class="cursor-blink text-shell-accent">▋</span>',
             ], 110);
             await emit(L, ['', ok('dev server live in the right pane — watch it, hit Ctrl-C anytime.')], 120);
-            await sleep(2600);
+            await gsleep(2600);
         }
 
-        // ── Scenario 2: SSH into prod and investigate (you type the secret) ──
-        async function scenarioProd() {
-            const tab = openTab('prod  ssh');
+        // ── Scenario 2: SSH into prod in a split (you type the secret) ───────
+        async function scenarioProd(tab) {
             const L = tab.paneL;
             await typeCmd(L, CLAUDE, 'api p99 latency just spiked — ssh into prod-1 and find the cause');
-            await emit(L, ['', reason('Connecting to prod-1 in this tab so you can watch every command on the real box.'), '', tool('execute', 'command: "ssh deploy@prod-1"')], 130);
-            await typeCmd(L, sh(), 'ssh deploy@prod-1', 26);
-            await emit(L, [
-                "<span class=\"text-shell-muted\">deploy@prod-1's password: </span><span class=\"text-shell-muted\">••••••••</span>  <span class=\"text-shell-amber\">← you typed it · the AI never sees secrets</span>",
-                '<span class="text-shell-muted">Welcome to Ubuntu 22.04.4 LTS · last login 2h ago</span>',
+            await emit(L, ['', reason("I'll open a split and work on prod-1 in the new pane so you can watch it live."), '', tool('split', 'direction: "h"')], 110);
+            const R = await splitTab(tab, '<span class="text-shell-muted">● %2 · deploy@prod-1</span>\n');
+            await emit(L, [ok('split — new pane %2'), '', tool('execute', 'session_id: "%2", command: "ssh deploy@prod-1"')], 130);
+            await typeCmd(R, sh(), 'ssh deploy@prod-1', 22);
+            await emit(R, [
+                "<span class=\"text-shell-muted\">deploy@prod-1's password: ••••••••</span>",
+                '<span class="text-shell-amber">↑ you typed it — the AI never sees secrets</span>',
+                '<span class="text-shell-muted">Welcome to Ubuntu 22.04.4 LTS</span>',
                 '',
-            ], 120);
-            await emit(L, [tool('execute', 'command: "docker stats --no-stream"')], 140);
-            await typeCmd(L, sh('deploy@prod-1'), 'docker stats --no-stream', 22);
-            await emit(L, [
-                '<span class="text-shell-muted">CONTAINER   CPU %    MEM        NET I/O</span>',
-                '<span class="text-shell-amber">api         98.4%    1.82GiB    1.2GB / 4GB</span>',
-                '<span class="text-white">worker       2.1%    240MiB     22MB / 80MB</span>',
+            ], 100);
+            await emit(L, [tool('execute', 'session_id: "%2", command: "docker stats --no-stream"')], 130);
+            await typeCmd(R, sh('deploy@prod-1'), 'docker stats --no-stream', 18);
+            await emit(R, [
+                '<span class="text-shell-muted">CONTAINER  CPU%   MEM</span>',
+                '<span class="text-shell-amber">api        98.4%  1.8GiB</span>',
+                '<span class="text-white">worker      2.1%  240MiB</span>',
                 '',
-                reason('api is pegged. Checking its logs.'),
-                tool('execute', 'command: "docker logs --since 2m api | tail -4"'),
-                '<span class="text-shell-red" style="color:#f87171">ERROR asyncpg: connection pool exhausted (size=10, waiting=37)</span>',
+            ], 90);
+            await emit(L, [reason('api is pegged — checking its logs.'), tool('execute', 'session_id: "%2", command: "docker logs --since 2m api | tail"')], 120);
+            await typeCmd(R, sh('deploy@prod-1'), 'docker logs --since 2m api | tail', 14);
+            await emit(R, [
+                '<span style="color:#f87171">ERROR asyncpg: pool exhausted (size=10, waiting=37)</span>',
                 '<span class="text-shell-muted">  at Pool.acquire (db/pool.py:88)</span>',
                 '',
-                reason('Found it — the DB pool is exhausted under load. Bumping the pool and restarting api.'),
-                tool('execute', 'command: "docker compose up -d --no-deps api"'),
+            ], 90);
+            await emit(L, [reason('DB pool exhausted under load — restarting api with a bigger pool.'), tool('execute', 'session_id: "%2", command: "docker compose up -d --no-deps api"')], 120);
+            await typeCmd(R, sh('deploy@prod-1'), 'docker compose up -d --no-deps api', 14);
+            await emit(R, [
                 '<span class="text-shell-muted">Recreating api … done</span>',
-                '',
-                ok('api CPU back to 6% · p99 normal. You watched the whole fix on prod, live.'),
+                '<span class="text-shell-green">api   4.2%   620MiB   ✓ healthy</span>',
                 '<span class="cursor-blink text-shell-accent">▋</span>',
             ], 95);
-            await sleep(2800);
+            await emit(L, ['', ok('p99 back to normal — you watched the whole fix on prod, live.')], 110);
+            await gsleep(2600);
         }
 
         // ── Scenario 3: reclaim disk space ──────────────────────────────────
-        async function scenarioDisk() {
-            const tab = openTab('disk  cleanup');
+        async function scenarioDisk(tab) {
             const L = tab.paneL;
             await typeCmd(L, CLAUDE, "docker is eating my disk — clean it up and show me what you freed");
             await emit(L, ['', tool('execute', 'command: "df -h /"')], 130);
@@ -979,26 +1019,66 @@
                 ok('freed <b>14.2 GB</b> — every command ran in front of you.'),
                 '<span class="cursor-blink text-shell-accent">▋</span>',
             ], 100);
-            await sleep(3200);
+            await gsleep(3000);
         }
 
-        async function runDemo() {
+        // Scenario registry — drives the tab strip and the autoplay order.
+        const scenarios = [
+            { title: 'web  ~/app', run: scenarioWeb },
+            { title: 'prod  ssh', run: scenarioProd },
+            { title: 'disk  cleanup', run: scenarioDisk },
+        ];
+
+        // Play scenario i (cancels whatever is running first).
+        async function play(i) {
+            ++tok;
+            activate(i);
+            resetTab(i);
+            try { await scenarios[i].run(tabs[i]); }
+            catch (e) { if (e !== 'ABORT') console.error(e); }
+        }
+
+        // Controller: autoplays in order, but a tab click jumps to that scenario.
+        let pickedIndex = null;
+        let pauseTimer = null;
+        let pauseResolve = null;
+        let started = false;
+
+        function wake() {
+            if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; }
+            if (pauseResolve) { const r = pauseResolve; pauseResolve = null; r(); }
+        }
+
+        function pick(i) {
+            hideHint();
+            pickedIndex = i;
+            ++tok;   // abort whatever is running
+            wake();  // cut any pause short
+            start();
+        }
+
+        async function controller() {
+            let i = 0;
             // eslint-disable-next-line no-constant-condition
             while (true) {
-                resetTerminal();
-                await scenarioWeb();
-                await scenarioProd();
-                await scenarioDisk();
-                await sleep(2500);
+                if (pickedIndex !== null) { i = pickedIndex; pickedIndex = null; }
+                await play(i);
+                if (pickedIndex !== null) continue;
+                await new Promise((res) => {
+                    pauseResolve = res;
+                    pauseTimer = setTimeout(() => { pauseTimer = null; pauseResolve = null; res(); }, 2200);
+                });
+                if (pickedIndex !== null) continue;
+                i = (i + 1) % scenarios.length;
             }
         }
 
-        // Start once the hero is on screen (kinder to mobile / battery)
+        function start() { if (started) return; started = true; controller(); }
+
+        // Tabs render immediately; autoplay begins once the hero is on screen.
+        buildTabs();
         const _termObserver = new IntersectionObserver((entries, obs) => {
-            if (entries.some((e) => e.isIntersecting)) {
-                obs.disconnect();
-                runDemo();
-            }
+            if (entries.some((e) => e.isIntersecting)) { obs.disconnect(); start(); }
         }, { threshold: 0.2 });
         _termObserver.observe(term);
 
