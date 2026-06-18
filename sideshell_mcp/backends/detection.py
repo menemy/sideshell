@@ -348,14 +348,14 @@ def detect_kitty() -> bool:
 
 
 def detect_maquake() -> bool:
-    """Check if maquake is available.
+    """Check if maquake/macuake is available.
 
-    Detection methods:
-    1. Check if /tmp/maquake.sock exists
+    Current builds expose /tmp/macuake.sock; older builds used /tmp/maquake.sock.
     """
-    if os.path.exists("/tmp/maquake.sock"):
-        logger.debug("maquake detected via socket file")
-        return True
+    for sock in ("/tmp/macuake.sock", "/tmp/maquake.sock"):
+        if os.path.exists(sock):
+            logger.debug(f"maquake detected via socket file {sock}")
+            return True
 
     return False
 
@@ -607,7 +607,8 @@ def _instantiate_backend(backend_type: BackendType) -> TerminalBackend:
         backend = MaQuakeBackend()
         if not backend.is_available:
             raise ValueError(
-                "maquake backend requested but not available. maquake must be running (socket at /tmp/maquake.sock)"
+                "maquake backend requested but not available. maquake/macuake must be running "
+                "(socket at /tmp/macuake.sock or /tmp/maquake.sock)"
             )
         return backend
 
