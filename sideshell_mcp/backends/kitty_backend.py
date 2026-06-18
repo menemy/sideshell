@@ -330,9 +330,13 @@ class KittyBackend(TerminalBackend):
                     return f"Completed (stability) in {elapsed:.1f}s:\n{current_content[-2000:]}"
 
     async def _capture_window(self, window_id: str) -> str:
-        """Capture window content."""
+        """Capture window content, including scrollback.
+
+        Without ``--extent all`` kitty only returns the visible screen, so
+        ``read_terminal`` could never reach scrollback.
+        """
         try:
-            output = await self._kitten("get-text", "--match", f"id:{window_id}")
+            output = await self._kitten("get-text", "--match", f"id:{window_id}", "--extent", "all")
             return output
         except Exception:
             return ""
