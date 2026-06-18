@@ -40,7 +40,9 @@ def detect_parent_process() -> BackendType | None:
                 # Get parent PID and process name
                 result = subprocess.run(
                     ["ps", "-o", "ppid=,comm=", "-p", str(pid)],
-                    capture_output=True, text=True, timeout=2,
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
                 )
                 if result.returncode != 0:
                     break
@@ -60,7 +62,9 @@ def detect_parent_process() -> BackendType | None:
                 # Also get the full command line for better detection
                 cmdline_result = subprocess.run(
                     ["ps", "-o", "args=", "-p", str(ppid)],
-                    capture_output=True, text=True, timeout=2,
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
                 )
                 cmdline = cmdline_result.stdout.strip().lower() if cmdline_result.returncode == 0 else ""
 
@@ -74,9 +78,18 @@ def detect_parent_process() -> BackendType | None:
 
                 # Check for IntelliJ-based IDEs
                 intellij_markers = [
-                    "idea", "pycharm", "webstorm", "goland", "rustrover",
-                    "phpstorm", "rider", "clion", "datagrip", "dataspell",
-                    "android studio", "studio",
+                    "idea",
+                    "pycharm",
+                    "webstorm",
+                    "goland",
+                    "rustrover",
+                    "phpstorm",
+                    "rider",
+                    "clion",
+                    "datagrip",
+                    "dataspell",
+                    "android studio",
+                    "studio",
                 ]
                 if any(x in comm for x in intellij_markers):
                     logger.info(f"Parent process detected: JetBrains IDE ({comm})")
@@ -173,6 +186,7 @@ def detect_vscode() -> bool:
 
     # Check port file
     from .ide_bridge import SIDESHELL_DIR
+
     port_file = SIDESHELL_DIR / "vscode-port"
     if port_file.exists():
         logger.debug("VSCode detected via port file")
@@ -205,6 +219,7 @@ def detect_intellij() -> bool:
 
     # Check port file
     from .ide_bridge import SIDESHELL_DIR
+
     port_file = SIDESHELL_DIR / "intellij-port"
     if port_file.exists():
         logger.debug("IntelliJ detected via port file")
@@ -369,9 +384,7 @@ def detect_windows_terminal() -> bool:
         # Check common installation paths
         wt_paths = [
             os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WindowsApps\wt.exe"),
-            os.path.expandvars(
-                r"%ProgramFiles%\WindowsApps\Microsoft.WindowsTerminal_*\wt.exe"
-            ),
+            os.path.expandvars(r"%ProgramFiles%\WindowsApps\Microsoft.WindowsTerminal_*\wt.exe"),
         ]
         for path in wt_paths:
             # Handle wildcards
@@ -451,6 +464,7 @@ def detect_backend() -> BackendType:
 
     # 3. Port file detection (IDE extension is running)
     from .ide_bridge import SIDESHELL_DIR
+
     if (SIDESHELL_DIR / "vscode-port").exists():
         logger.info("Auto-detected backend: VSCode (port file found)")
         return BackendType.VSCODE
@@ -519,8 +533,7 @@ def get_backend(backend_type: BackendType = BackendType.AUTO) -> TerminalBackend
             from .iterm2_backend import ITermBackend
         except ImportError:
             raise ValueError(
-                "iTerm2 backend requires the iterm2 package. "
-                "Install with: pip install sideshell-mcp[iterm2]"
+                "iTerm2 backend requires the iterm2 package. Install with: pip install sideshell-mcp[iterm2]"
             ) from None
 
         backend = ITermBackend()
@@ -536,10 +549,7 @@ def get_backend(backend_type: BackendType = BackendType.AUTO) -> TerminalBackend
 
         backend = TmuxBackend()
         if not backend.is_available:
-            raise ValueError(
-                "tmux backend requested but not available. "
-                "Please install tmux, or use --backend=iterm2"
-            )
+            raise ValueError("tmux backend requested but not available. Please install tmux, or use --backend=iterm2")
         return backend
 
     elif backend_type == BackendType.WEZTERM:
@@ -548,8 +558,7 @@ def get_backend(backend_type: BackendType = BackendType.AUTO) -> TerminalBackend
         backend = WezTermBackend()
         if not backend.is_available:
             raise ValueError(
-                "WezTerm backend requested but not available. "
-                "Please install WezTerm, or use --backend=tmux"
+                "WezTerm backend requested but not available. Please install WezTerm, or use --backend=tmux"
             )
         return backend
 
@@ -558,21 +567,17 @@ def get_backend(backend_type: BackendType = BackendType.AUTO) -> TerminalBackend
 
         backend = KittyBackend()
         if not backend.is_available:
-            raise ValueError(
-                "Kitty backend requested but not available. "
-                "Please install Kitty, or use --backend=tmux"
-            )
+            raise ValueError("Kitty backend requested but not available. Please install Kitty, or use --backend=tmux")
         return backend
 
     elif backend_type == BackendType.GHOSTTY:
-        from .ghostty_backend import GhosttyBackend
+        from .ghostty_tmux_backend import GhosttyTmuxBackend
 
-        backend = GhosttyBackend()
+        backend = GhosttyTmuxBackend()
         if backend.is_available:
             return backend
         raise ValueError(
-            "Ghostty backend requires tmux. "
-            "Please install tmux: brew install tmux"
+            "ghostty_tmux backend requires Ghostty (1.3+) and tmux. Please install tmux: brew install tmux"
         )
 
     elif backend_type == BackendType.MAQUAKE:
@@ -581,8 +586,7 @@ def get_backend(backend_type: BackendType = BackendType.AUTO) -> TerminalBackend
         backend = MaQuakeBackend()
         if not backend.is_available:
             raise ValueError(
-                "maquake backend requested but not available. "
-                "maquake must be running (socket at /tmp/maquake.sock)"
+                "maquake backend requested but not available. maquake must be running (socket at /tmp/maquake.sock)"
             )
         return backend
 
