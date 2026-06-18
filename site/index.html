@@ -920,7 +920,19 @@
             const cur = wrap.querySelector('.cursor-blink');
             for (const ch of cmd) { span.textContent += ch; scrollPane(pane); await gsleep((base || 32) + Math.random() * 46); }
             cur.remove();
-            await gsleep(300);
+            await gsleep(480); // beat: the command "runs" before output appears
+        }
+
+        // A deliberate pause (command running, connecting, thinking…).
+        const think = (ms) => gsleep(ms);
+
+        // Human types a reply (e.g. a password) char-by-char after a static prefix.
+        async function typeReply(pane, prefixHtml, text, cls) {
+            const wrap = line(pane, prefixHtml + '<span class="reply ' + (cls || 'text-shell-muted') + '"></span><span class="cursor-blink text-shell-accent">▋</span>');
+            const span = wrap.querySelector('.reply');
+            const cur = wrap.querySelector('.cursor-blink');
+            for (const ch of text) { span.textContent += ch; scrollPane(pane); await gsleep(120 + Math.random() * 90); }
+            cur.remove();
         }
 
         const CLAUDE = '<span style="color:#d97757">&gt;</span> ';
@@ -954,6 +966,7 @@
             const R = await splitTab(tab, '<span class="text-shell-muted">● %2 · ~/app</span>\n');
             await emit(L, [ok('split — new pane %2'), '', tool('execute', 'session_id: "%2", command: "npm run dev"')], 150);
             await typeCmd(R, sh(), 'npm run dev', 26);
+            await think(800); // dev server boots
             await emit(R, [
                 '',
                 '<span class="text-shell-muted">  VITE</span> <span class="text-shell-green">v5.4.2</span>  <span class="text-shell-muted">ready in 412 ms</span>',
@@ -975,12 +988,14 @@
             const R = await splitTab(tab, '<span class="text-shell-muted">● %2 · deploy@prod-1</span>\n');
             await emit(L, [ok('split — new pane %2'), '', tool('execute', 'session_id: "%2", command: "ssh deploy@prod-1"')], 130);
             await typeCmd(R, sh(), 'ssh deploy@prod-1', 22);
+            await think(750); // connecting, prompts for the password
+            await typeReply(R, "<span class=\"text-shell-muted\">deploy@prod-1's password: </span>", '••••••••');
+            await think(500);
             await emit(R, [
-                "<span class=\"text-shell-muted\">deploy@prod-1's password: ••••••••</span>",
                 '<span class="text-shell-amber">↑ you typed it — the AI never sees secrets</span>',
                 '<span class="text-shell-muted">Welcome to Ubuntu 22.04.4 LTS</span>',
                 '',
-            ], 100);
+            ], 130);
             await emit(L, [tool('execute', 'session_id: "%2", command: "docker stats --no-stream"')], 130);
             await typeCmd(R, sh('deploy@prod-1'), 'docker stats --no-stream', 18);
             await emit(R, [
@@ -1015,14 +1030,17 @@
             const R = await splitTab(tab, '<span class="text-shell-muted">● %2 · staging</span>\n');
             await emit(L, [ok('split — new pane %2'), '', tool('execute', 'session_id: "%2", command: "sudo nginx -t && sudo systemctl reload nginx"')], 130);
             await typeCmd(R, sh(), 'sudo nginx -t && sudo systemctl reload nginx', 16);
+            await think(700); // sudo prompts for the password
+            await typeReply(R, '<span class="text-shell-muted">[sudo] password for you: </span>', '••••••••');
+            await think(500);
+            await emit(R, ['<span class="text-shell-amber">↑ you typed it — keystrokes go to the terminal; the AI never sees it</span>', ''], 130);
+            await think(650); // testing config + reloading
             await emit(R, [
-                '<span class="text-shell-muted">[sudo] password for you: ••••••••</span>',
-                '<span class="text-shell-amber">↑ you typed it — keystrokes go to the terminal; the AI never sees it</span>',
-                '',
                 '<span class="text-shell-muted">nginx: configuration file /etc/nginx/nginx.conf test is successful</span>',
                 '<span class="text-shell-green">● nginx.service — active (running)</span>',
                 '<span class="cursor-blink text-shell-accent">▋</span>',
-            ], 95);
+            ], 170);
+            await think(400);
             await emit(L, ['', ok('reloaded — you authorized it with your own password. I only ever saw "success".')], 110);
             await gsleep(2800);
         }
