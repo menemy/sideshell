@@ -47,11 +47,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/anthropics/sideshell"
-Documentation = "https://github.com/anthropics/sideshell#readme"
-Repository = "https://github.com/anthropics/sideshell"
-Issues = "https://github.com/anthropics/sideshell/issues"
-Changelog = "https://github.com/anthropics/sideshell/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/menemy/sideshell"
+Documentation = "https://github.com/menemy/sideshell#readme"
+Repository = "https://github.com/menemy/sideshell"
+Issues = "https://github.com/menemy/sideshell/issues"
+Changelog = "https://github.com/menemy/sideshell/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 iterm2 = ["iterm2>=2.7"]
@@ -68,7 +68,7 @@ sideshell-mcp = "sideshell_mcp.server:main"
 
 [tool.ruff]
 target-version = "py311"
-line-length = 100
+line-length = 120
 
 [tool.ruff.lint]
 select = [
@@ -83,9 +83,16 @@ select = [
     "RUF",  # ruff specific rules
 ]
 ignore = [
-    "ANN101",  # missing type annotation for self
-    "ANN102",  # missing type annotation for cls
+    "ANN401",   # Any is sometimes the right type for MCP argument dicts
+    "ASYNC109", # explicit `timeout` params are part of our public backend API
+    "UP042",    # `(str, Enum)` is an intentional JSON-serializable mixin; StrEnum changes str() semantics
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests favour readability over annotations / strict line length, and the live
+# backend suites legitimately drive real terminals via blocking subprocess in
+# async setup/teardown helpers (ASYNC220/221).
+"tests/**" = ["ANN", "E501", "F841", "ASYNC"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -102,3 +109,18 @@ check_untyped_defs = true
 [[tool.mypy.overrides]]
 module = "iterm2.*"
 ignore_missing_imports = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["sideshell_mcp"]
+
+[tool.hatch.build.targets.sdist]
+# Ship the Python package + key docs; leave the IDE plugins, marketing site,
+# and internal working notes out of the PyPI tarball.
+exclude = [
+    "/site",
+    "/extensions",
+    "/work_in_progress",
+    "/work_history",
+    "/icon.png",
+    "/icon.svg",
+]
