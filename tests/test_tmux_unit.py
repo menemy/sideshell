@@ -615,3 +615,40 @@ class TestAppearance:
         backend._get_active_pane = AsyncMock(return_value="%0")
         result = await backend.get_current_active_session_id()
         assert result == "%0"
+
+
+# =============================================================================
+# watch_for="output" must ignore the command echo
+# =============================================================================
+
+
+class TestWatchForOutput:
+    @pytest.mark.asyncio
+    async def test_output_ignores_command_echo(self, backend):
+        """Must NOT return on the echoed command line — only on real output."""
+        backend._tmux = AsyncMock(return_value="")
+        captures = [
+            "user@host:~$ ",  # initial (pre-send)
+            "user@host:~$ sleep 1; echo done",  # only the echoed command, no output yet
+            "user@host:~$ sleep 1; echo done\ndone\nuser@host:~$ ",  # real output appears
+        ]
+        backend._capture_pane = AsyncMock(side_effect=captures)
+        with patch("asyncio.sleep", new=AsyncMock()):
+            result = await backend._execute_with_wait("%0", "sleep 1; echo done", timeout=10, watch_for="output")
+        assert "Output detected" in result
+        # Returned only on the 3rd capture (real output), not the echo-only 2nd.
+        assert backend._capture_pane.await_count == 3
+
+    @pytest.mark.asyncio
+    async def test_output_returns_when_output_and_echo_arrive_together(self, backend):
+        """A fast command whose output lands with the echo still returns promptly."""
+        backend._tmux = AsyncMock(return_value="")
+        captures = [
+            "$ ",  # initial
+            "$ echo hi\nhi\n$ ",  # echo + output in the same capture
+        ]
+        backend._capture_pane = AsyncMock(side_effect=captures)
+        with patch("asyncio.sleep", new=AsyncMock()):
+            result = await backend._execute_with_wait("%0", "echo hi", timeout=10, watch_for="output")
+        assert "Output detected" in result
+        assert backend._capture_pane.await_count == 2

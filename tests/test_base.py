@@ -90,6 +90,24 @@ class TestControlKey:
         assert ControlKey("enter") == ControlKey.ENTER
         assert ControlKey("f1") == ControlKey.F1
 
+
+class TestRealOutputLines:
+    """_real_output_lines must strip the echoed command from new output."""
+
+    def test_drops_command_echo_line(self):
+        new_lines = ["user@host:~$ sleep 1; echo done"]
+        assert TerminalBackend._real_output_lines(new_lines, "sleep 1; echo done") == []
+
+    def test_keeps_real_output(self):
+        new_lines = ["user@host:~$ echo hi", "hi"]
+        assert TerminalBackend._real_output_lines(new_lines, "echo hi") == ["hi"]
+
+    def test_ignores_blank_lines(self):
+        assert TerminalBackend._real_output_lines(["", "   "], "ls") == []
+
+    def test_empty_command_keeps_all_nonblank(self):
+        assert TerminalBackend._real_output_lines(["a", "", "b"], "") == ["a", "b"]
+
     def test_invalid_key(self):
         with pytest.raises(ValueError):
             ControlKey("invalid")

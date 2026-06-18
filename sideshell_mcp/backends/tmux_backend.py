@@ -388,6 +388,7 @@ class TmuxBackend(TerminalBackend):
         start_time = asyncio.get_running_loop().time()
 
         initial_output = await self._capture_pane(pane_id)
+        initial_lines = initial_output.splitlines()
         # Empty command = monitor-only mode; don't inject a spurious Enter.
         if command:
             await self._tmux("send-keys", "-t", pane_id, "--", command, "Enter")
@@ -408,7 +409,10 @@ class TmuxBackend(TerminalBackend):
 
             if watch_for == "output":
                 if current_output != initial_output:
-                    return f"Output detected in {elapsed:.1f}s"
+                    new_lines = [ln for ln in current_output.splitlines() if ln not in initial_lines]
+                    # Ignore the echoed command line; wait for real output.
+                    if self._real_output_lines(new_lines, command):
+                        return f"Output detected in {elapsed:.1f}s"
 
             elif watch_for == "silence":
                 if current_output != last_output:
