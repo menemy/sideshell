@@ -66,6 +66,9 @@ class GhosttyTmuxBackend(TmuxBackend):
         # Per-process token so PID reuse cannot collide with a stale tmux session
         # that ``tmux new-session -A`` would otherwise silently attach to.
         self._token = uuid.uuid4().hex[:4]
+        # Serialize read-modify-write of the session map + state file so
+        # concurrent create/close/reconcile calls can't corrupt either.
+        self._state_lock = asyncio.Lock()
 
     @property
     def name(self) -> str:
@@ -182,18 +185,19 @@ class GhosttyTmuxBackend(TmuxBackend):
         if not self._ghostty_terminals:
             return
         live = await self._live_terminal_ids()
-        changed = False
-        for name, term_id in list(self._ghostty_terminals.items()):
-            code, _, _ = await self._run_tmux("has-session", "-t", name)
-            dead_tmux = code != 0
-            dead_surface = live is not None and term_id not in live
-            if dead_surface and not dead_tmux:
-                await self._run_tmux("kill-session", "-t", name)
-            if dead_surface or dead_tmux:
-                del self._ghostty_terminals[name]
-                changed = True
-        if changed:
-            self._save_state()
+        async with self._state_lock:
+            changed = False
+            for name, term_id in list(self._ghostty_terminals.items()):
+                code, _, _ = await self._run_tmux("has-session", "-t", name)
+                dead_tmux = code != 0
+                dead_surface = live is not None and term_id not in live
+                if dead_surface and not dead_tmux:
+                    await self._run_tmux("kill-session", "-t", name)
+                if dead_surface or dead_tmux:
+                    del self._ghostty_terminals[name]
+                    changed = True
+            if changed:
+                self._save_state()
 
     # --- Connection -----------------------------------------------------------
 
@@ -224,8 +228,9 @@ class GhosttyTmuxBackend(TmuxBackend):
             await self._close_surface(term_id)
             await self._run_tmux("kill-session", "-t", name)
             return f"Error: Ghostty surface opened but its tmux session '{name}' did not start; surface closed."
-        self._ghostty_terminals[name] = term_id
-        self._save_state()
+        async with self._state_lock:
+            self._ghostty_terminals[name] = term_id
+            self._save_state()
         if command:
             await self._tmux("send-keys", "-t", name, "--", command, "Enter")
         return None
@@ -382,10 +387,11 @@ end tell'''
             if live is not None and term_id in live:
                 return f"Error: failed to close Ghostty surface for {target} (still open)"
 
-        if target in self._ghostty_terminals:
-            await self._run_tmux("kill-session", "-t", target)
-            del self._ghostty_terminals[target]
-            self._save_state()
+        async with self._state_lock:
+            if target in self._ghostty_terminals:
+                await self._run_tmux("kill-session", "-t", target)
+                del self._ghostty_terminals[target]
+                self._save_state()
         return f"Closed {target}"
 
     # --- Listing / state ------------------------------------------------------
@@ -408,7 +414,7 @@ end tell'''
 
         await self._reconcile()
         sessions = []
-        for name, term_id in self._ghostty_terminals.items():
+        for name, term_id in list(self._ghostty_terminals.items()):
             info = await self.get_session(name)
             sessions.append(
                 {
