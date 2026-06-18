@@ -65,6 +65,8 @@ class IDEBridgeClient:
         self._reader_task: asyncio.Task[None] | None = None
         self._connected = False
         self._token: str | None = None
+        # Serialize (re)connects so concurrent calls don't open duplicate sockets.
+        self._conn_lock = asyncio.Lock()
 
     @property
     def port_file(self) -> Path:
@@ -148,15 +150,18 @@ class IDEBridgeClient:
                 pass
             self._writer = None
             self._reader = None
-        # Cancel pending futures
-        for future in self._pending.values():
-            if not future.done():
-                future.cancel()
-        self._pending.clear()
+        # Fail any still-pending requests (idempotent: the reader task's teardown
+        # may already have done this).
+        self._fail_pending(IDEBridgeError(f"{self.ide_name} disconnected"))
 
     async def ensure_connection(self) -> None:
         """Ensure we're connected, reconnect if needed."""
-        if not self._connected or self._writer is None:
+        if self._connected and self._writer is not None:
+            return
+        async with self._conn_lock:
+            # Re-check under the lock: another caller may have just connected.
+            if self._connected and self._writer is not None:
+                return
             success = await self.connect()
             if not success:
                 raise IDEBridgeError(
@@ -164,6 +169,13 @@ class IDEBridgeClient:
                     f"Make sure the sideshell extension is installed "
                     f"and running in {self.ide_name}."
                 )
+
+    def _fail_pending(self, exc: Exception) -> None:
+        """Reject all in-flight requests so callers fail fast instead of hanging."""
+        for future in self._pending.values():
+            if not future.done():
+                future.set_exception(exc)
+        self._pending.clear()
 
     async def _read_loop(self) -> None:
         """Read responses from the Unix socket (newline-delimited JSON)."""
@@ -186,7 +198,11 @@ class IDEBridgeClient:
                     logger.warning(f"Invalid JSON from {self.ide_name}")
         except Exception as e:
             logger.debug(f"Socket read loop ended: {e}")
+        finally:
+            # The socket is gone — mark disconnected and fail any in-flight
+            # requests immediately rather than letting each hang until timeout.
             self._connected = False
+            self._fail_pending(IDEBridgeError(f"Connection to {self.ide_name} closed"))
 
     async def call(
         self,
