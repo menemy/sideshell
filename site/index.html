@@ -996,29 +996,33 @@
             await gsleep(2600);
         }
 
-        // ── Scenario 3: reclaim disk space ──────────────────────────────────
+        // ── Scenario 3: reclaim disk space in a split ───────────────────────
         async function scenarioDisk(tab) {
             const L = tab.paneL;
-            await typeCmd(L, CLAUDE, "docker is eating my disk — clean it up and show me what you freed");
-            await emit(L, ['', tool('execute', 'command: "df -h /"')], 130);
-            await typeCmd(L, sh(), 'df -h /', 26);
-            await emit(L, [
-                '<span class="text-shell-muted">Filesystem      Size   Used  Avail  Cap</span>',
-                '<span class="text-shell-amber">/dev/disk3s1   460G   431G    29G   94%</span>',
+            await typeCmd(L, CLAUDE, 'docker is eating my disk — clean it up and show me what you freed');
+            await emit(L, ['', reason("I'll run this in a split so you can watch the space come back."), '', tool('split', 'direction: "h"')], 110);
+            const R = await splitTab(tab, '<span class="text-shell-muted">● %2 · cleanup</span>\n');
+            await emit(L, [ok('split — new pane %2'), '', tool('execute', 'session_id: "%2", command: "df -h /"')], 130);
+            await typeCmd(R, sh(), 'df -h /', 22);
+            await emit(R, [
+                '<span class="text-shell-muted">Filesystem      Size  Used  Avail  Cap</span>',
+                '<span class="text-shell-amber">/dev/disk3s1   460G  431G    29G  94%</span>',
                 '',
-                tool('execute', 'command: "docker system prune -af"'),
-            ], 110);
-            await typeCmd(L, sh(), 'docker system prune -af', 22);
-            await emit(L, [
+            ], 95);
+            await emit(L, [tool('execute', 'session_id: "%2", command: "docker system prune -af"')], 120);
+            await typeCmd(R, sh(), 'docker system prune -af', 18);
+            await emit(R, [
                 '<span class="text-shell-muted">Deleted images, networks &amp; build cache …</span>',
                 '<span class="text-white">Total reclaimed space: 14.21GB</span>',
                 '',
-                tool('execute', 'command: "df -h /"'),
-                '<span class="text-shell-green">/dev/disk3s1   460G   416G    44G   91%</span>',
-                '',
-                ok('freed <b>14.2 GB</b> — every command ran in front of you.'),
+            ], 95);
+            await emit(L, [tool('execute', 'session_id: "%2", command: "df -h /"')], 120);
+            await typeCmd(R, sh(), 'df -h /', 22);
+            await emit(R, [
+                '<span class="text-shell-green">/dev/disk3s1   460G  416G    44G  91%</span>',
                 '<span class="cursor-blink text-shell-accent">▋</span>',
-            ], 100);
+            ], 95);
+            await emit(L, ['', ok('freed <b>14.2 GB</b> — every command ran in the split, in front of you.')], 110);
             await gsleep(3000);
         }
 
