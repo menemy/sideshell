@@ -114,7 +114,7 @@ class TestCreateWindow:
         backend._osascript = AsyncMock(return_value="TERM-UUID-1")
         out = await backend.create_window(command="htop")
         name = _sid(out)
-        backend._tmux.assert_awaited_with("send-keys", "-t", name, "htop", "Enter")
+        backend._tmux.assert_awaited_with("send-keys", "-t", name, "--", "htop", "Enter")
 
     @pytest.mark.asyncio
     async def test_create_window_osascript_error(self, backend):

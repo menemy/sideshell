@@ -216,6 +216,21 @@ class TerminalBackend(ABC):
         ControlKey.F12: "\x1b[24~",
     }
 
+    @staticmethod
+    def _real_output_lines(new_lines: list[str], command: str) -> list[str]:
+        """Filter the echoed command line out of newly-appeared lines.
+
+        When a command is submitted the shell echoes the command text on the
+        prompt line, which would otherwise be mistaken for command output by
+        ``watch_for='output'``. Any new line containing the (stripped) command
+        text is treated as that echo and dropped; the rest is real output.
+        """
+        cmd = command.strip()
+        candidates = [line for line in new_lines if line.strip()]
+        if not cmd:
+            return candidates
+        return [line for line in candidates if cmd not in line]
+
     @property
     @abstractmethod
     def name(self) -> str:

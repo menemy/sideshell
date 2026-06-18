@@ -438,9 +438,10 @@ class ITermBackend(TerminalBackend):
             if watch_for == "output":
                 if current_hash != initial_hash:
                     new_lines = [line for line in current_lines if line.strip() and line not in initial_lines]
-                    if new_lines:
-                        return f"Output detected in {elapsed:.1f}s:\n" + "\n".join(new_lines[-20:])
-                    return f"Output changed in {elapsed:.1f}s"
+                    # Ignore the echoed command line; wait for real output.
+                    real_lines = self._real_output_lines(new_lines, command)
+                    if real_lines:
+                        return f"Output detected in {elapsed:.1f}s:\n" + "\n".join(real_lines[-20:])
 
             elif watch_for == "silence":
                 if current_hash != initial_hash:

@@ -439,3 +439,58 @@ class TestIDEBridgeE2E:
             assert result is False
         finally:
             await client.disconnect()
+
+    @pytest.mark.asyncio
+    async def test_concurrent_ensure_connection_connects_once(
+        self,
+        short_dir: Path,
+        server_socket: Path,
+    ) -> None:
+        """Concurrent callers must share a single connection, not open many."""
+        port_file = short_dir / "test-port"
+        port_file.write_text(json.dumps({"socket": str(server_socket), "token": "secret"}))
+        with patch("sideshell_mcp.backends.ide_bridge.SIDESHELL_DIR", short_dir):
+            client = IDEBridgeClient("test", 39999)
+            real_connect = client.connect
+            calls = 0
+
+            async def counting_connect() -> bool:
+                nonlocal calls
+                calls += 1
+                return await real_connect()
+
+            client.connect = counting_connect  # type: ignore[method-assign]
+            await asyncio.gather(*[client.ensure_connection() for _ in range(8)])
+        try:
+            assert calls == 1
+            assert client._connected
+        finally:
+            await client.disconnect()
+
+    @pytest.mark.asyncio
+    async def test_inflight_call_fails_fast_when_socket_drops(self, short_dir: Path) -> None:
+        """A dropped socket must fail in-flight requests immediately, not hang."""
+        sock_path = short_dir / "drop.sock"
+
+        async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+            await reader.readline()  # auth handshake
+            writer.write(json.dumps({"ok": True}).encode() + b"\n")
+            await writer.drain()
+            await reader.readline()  # read the request, then drop without responding
+            writer.close()
+
+        server = await asyncio.start_unix_server(handle, path=str(sock_path))
+        try:
+            port_file = short_dir / "test-port"
+            port_file.write_text(json.dumps({"socket": str(sock_path), "token": "secret"}))
+            with patch("sideshell_mcp.backends.ide_bridge.SIDESHELL_DIR", short_dir):
+                client = IDEBridgeClient("test", 39999)
+                await client.connect()
+            # The call's own timeout is 30s; the outer 3s guard proves it fails
+            # fast (via the read-loop draining pending futures), not on timeout.
+            with pytest.raises(IDEBridgeError):
+                await asyncio.wait_for(client.call("list_sessions", timeout=30.0), timeout=3.0)
+            await client.disconnect()
+        finally:
+            server.close()
+            await server.wait_closed()

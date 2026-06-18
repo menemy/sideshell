@@ -522,12 +522,33 @@ def get_backend(backend_type: BackendType = BackendType.AUTO) -> TerminalBackend
         TerminalBackend instance.
 
     Raises:
-        ValueError: If requested backend is not available.
+        ValueError: If an explicitly requested backend is not available, or if
+            auto-detection finds no usable backend at all.
     """
-    # Auto-detect if needed
-    if backend_type == BackendType.AUTO:
-        backend_type = detect_backend()
+    if backend_type != BackendType.AUTO:
+        return _instantiate_backend(backend_type)
 
+    # Auto-detect, but a detected backend may not actually be usable — e.g. the
+    # iTerm2 app is installed (so detection picks it) while the optional `iterm2`
+    # package is not, or Ghostty/maquake is detected without tmux/the socket.
+    # Try the detected choice first, then fall through the remaining available
+    # backends so a default install never crashes on startup.
+    detected = detect_backend()
+    candidates = [detected, *[b for b in list_available_backends() if b != detected]]
+    last_error: ValueError | None = None
+    for candidate in candidates:
+        try:
+            return _instantiate_backend(candidate)
+        except ValueError as e:
+            logger.warning(f"Auto-detected backend {candidate.value} is not usable: {e}")
+            last_error = e
+    if last_error:
+        raise last_error
+    raise ValueError("No usable terminal backend detected. Install tmux (brew install tmux) or pass --backend.")
+
+
+def _instantiate_backend(backend_type: BackendType) -> TerminalBackend:
+    """Construct a concrete backend, raising ValueError if it is not available."""
     if backend_type == BackendType.ITERM2:
         try:
             from .iterm2_backend import ITermBackend

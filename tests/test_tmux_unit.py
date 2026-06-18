@@ -443,14 +443,35 @@ class TestSplitAndCreate:
     @pytest.mark.asyncio
     async def test_create_window_with_command(self, backend):
         backend._tmux = AsyncMock(return_value="%11")
-        result = await backend.create_window(command="htop")
+        result = await backend.create_window(command="echo hello world")
         assert "pane_id: %11" in result
+        # Multi-word command is typed via send-keys (with "--" guard), NOT passed
+        # to new-session (which would exec it literally and kill the pane).
+        backend._tmux.assert_any_await("send-keys", "-t", "%11", "--", "echo hello world", "Enter")
+        new_session_call = backend._tmux.await_args_list[0]
+        assert new_session_call.args[0] == "new-session"
+        assert "echo hello world" not in new_session_call.args
+
+    @pytest.mark.asyncio
+    async def test_create_window_uses_unique_names(self, backend):
+        backend._tmux = AsyncMock(return_value="%1")
+        await backend.create_window()
+        await backend.create_window()
+        names = [c.args[3] for c in backend._tmux.await_args_list if c.args[0] == "new-session"]
+        assert len(names) == 2
+        assert names[0] != names[1]
 
     @pytest.mark.asyncio
     async def test_create_tab(self, backend):
         backend._tmux = AsyncMock(return_value="%12")
         result = await backend.create_tab()
         assert "pane_id: %12" in result
+
+    @pytest.mark.asyncio
+    async def test_create_tab_with_command_uses_send_keys(self, backend):
+        backend._tmux = AsyncMock(return_value="%12")
+        await backend.create_tab(command="ls -la /tmp")
+        backend._tmux.assert_any_await("send-keys", "-t", "%12", "--", "ls -la /tmp", "Enter")
 
     @pytest.mark.asyncio
     async def test_create_session_with_active_pane(self, backend):
@@ -594,3 +615,40 @@ class TestAppearance:
         backend._get_active_pane = AsyncMock(return_value="%0")
         result = await backend.get_current_active_session_id()
         assert result == "%0"
+
+
+# =============================================================================
+# watch_for="output" must ignore the command echo
+# =============================================================================
+
+
+class TestWatchForOutput:
+    @pytest.mark.asyncio
+    async def test_output_ignores_command_echo(self, backend):
+        """Must NOT return on the echoed command line — only on real output."""
+        backend._tmux = AsyncMock(return_value="")
+        captures = [
+            "user@host:~$ ",  # initial (pre-send)
+            "user@host:~$ sleep 1; echo done",  # only the echoed command, no output yet
+            "user@host:~$ sleep 1; echo done\ndone\nuser@host:~$ ",  # real output appears
+        ]
+        backend._capture_pane = AsyncMock(side_effect=captures)
+        with patch("asyncio.sleep", new=AsyncMock()):
+            result = await backend._execute_with_wait("%0", "sleep 1; echo done", timeout=10, watch_for="output")
+        assert "Output detected" in result
+        # Returned only on the 3rd capture (real output), not the echo-only 2nd.
+        assert backend._capture_pane.await_count == 3
+
+    @pytest.mark.asyncio
+    async def test_output_returns_when_output_and_echo_arrive_together(self, backend):
+        """A fast command whose output lands with the echo still returns promptly."""
+        backend._tmux = AsyncMock(return_value="")
+        captures = [
+            "$ ",  # initial
+            "$ echo hi\nhi\n$ ",  # echo + output in the same capture
+        ]
+        backend._capture_pane = AsyncMock(side_effect=captures)
+        with patch("asyncio.sleep", new=AsyncMock()):
+            result = await backend._execute_with_wait("%0", "echo hi", timeout=10, watch_for="output")
+        assert "Output detected" in result
+        assert backend._capture_pane.await_count == 2

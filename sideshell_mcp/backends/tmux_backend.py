@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import shutil
+import uuid
 from typing import ClassVar
 
 from .base import (
@@ -363,8 +364,8 @@ class TmuxBackend(TerminalBackend):
             if wait:
                 return await self._execute_with_wait(pane_id, command, timeout, watch_for)
 
-            # Send keys to pane
-            await self._tmux("send-keys", "-t", pane_id, command, "Enter")
+            # Send keys to pane ("--" stops a leading-dash command being read as a flag)
+            await self._tmux("send-keys", "-t", pane_id, "--", command, "Enter")
             return f"Sent: {command}"
         except Exception as e:
             return f"Error: {e!s}"
@@ -387,9 +388,10 @@ class TmuxBackend(TerminalBackend):
         start_time = asyncio.get_running_loop().time()
 
         initial_output = await self._capture_pane(pane_id)
+        initial_lines = initial_output.splitlines()
         # Empty command = monitor-only mode; don't inject a spurious Enter.
         if command:
-            await self._tmux("send-keys", "-t", pane_id, command, "Enter")
+            await self._tmux("send-keys", "-t", pane_id, "--", command, "Enter")
 
         last_output = initial_output
         last_change_time = start_time
@@ -407,7 +409,10 @@ class TmuxBackend(TerminalBackend):
 
             if watch_for == "output":
                 if current_output != initial_output:
-                    return f"Output detected in {elapsed:.1f}s"
+                    new_lines = [ln for ln in current_output.splitlines() if ln not in initial_lines]
+                    # Ignore the echoed command line; wait for real output.
+                    if self._real_output_lines(new_lines, command):
+                        return f"Output detected in {elapsed:.1f}s"
 
             elif watch_for == "silence":
                 if current_output != last_output:
@@ -531,6 +536,11 @@ class TmuxBackend(TerminalBackend):
         direction_text = "horizontally" if direction == SplitDirection.HORIZONTAL else "vertically"
         return f"Split {direction_text}. New session: {new_pane_id}"
 
+    @staticmethod
+    def _new_session_name() -> str:
+        """Generate a unique tmux session name (PID + random suffix)."""
+        return f"sideshell-{os.getpid()}-{uuid.uuid4().hex[:6]}"
+
     async def create_window(
         self,
         profile: str | None = None,
@@ -538,15 +548,18 @@ class TmuxBackend(TerminalBackend):
     ) -> str:
         """Create new tmux session (equivalent to new window)."""
         try:
-            # Generate session name
-            session_name = f"vibe-{os.getpid()}"
+            # Unique name so repeated calls don't collide with "duplicate session".
+            session_name = self._new_session_name()
 
             args = ["new-session", "-d", "-s", session_name, "-P", "-F", "#{pane_id}"]
-            if command:
-                args.extend([command])
-
             output = await self._tmux(*args)
             pane_id = output.strip()
+
+            # Run the command in the new pane's shell via send-keys so multi-word
+            # commands work and the shell stays alive afterwards (passing the
+            # command to new-session would exec it literally and kill the pane).
+            if command:
+                await self._tmux("send-keys", "-t", pane_id, "--", command, "Enter")
 
             return f"New session created with pane_id: {pane_id}"
         except Exception as e:
@@ -560,11 +573,11 @@ class TmuxBackend(TerminalBackend):
         """Create new tmux window (equivalent to new tab)."""
         try:
             args = ["new-window", "-P", "-F", "#{pane_id}"]
-            if command:
-                args.extend([command])
-
             output = await self._tmux(*args)
             pane_id = output.strip()
+
+            if command:
+                await self._tmux("send-keys", "-t", pane_id, "--", command, "Enter")
 
             return f"New window created with pane_id: {pane_id}"
         except Exception as e:
