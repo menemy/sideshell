@@ -1,7 +1,7 @@
-"""IntelliJ IDEA terminal backend via WebSocket bridge.
+"""IntelliJ IDEA terminal backend via Unix socket bridge.
 
 This backend connects to the sideshell IntelliJ plugin which runs
-a WebSocket server inside the IDE, exposing terminal control APIs.
+a Unix domain socket server inside the IDE, exposing terminal control APIs.
 
 Compatible with all JetBrains IDEs: IntelliJ IDEA, PyCharm, WebStorm,
 GoLand, RustRover, Android Studio, PhpStorm, etc.
@@ -34,13 +34,14 @@ To install:
   - Download sideshell-terminal.zip
   - Settings -> Plugins -> Install Plugin from Disk
 
-The plugin starts automatically and listens on localhost:{port}.
+The plugin starts automatically and listens on a Unix socket at
+~/.sideshell/intellij.sock.
 Works with: IntelliJ IDEA, PyCharm, WebStorm, GoLand, RustRover, PhpStorm, Android Studio.
 """.strip()
 
 
 class IntelliJBackend(TerminalBackend):
-    """IntelliJ terminal backend using WebSocket bridge to the plugin."""
+    """IntelliJ terminal backend using Unix socket bridge to the plugin."""
 
     def __init__(self) -> None:
         self._bridge = IDEBridgeClient("intellij", DEFAULT_INTELLIJ_PORT)
@@ -76,9 +77,7 @@ class IntelliJBackend(TerminalBackend):
         try:
             await self._bridge.ensure_connection()
         except IDEBridgeError:
-            raise IDEBridgeError(
-                INSTALL_INSTRUCTIONS.format(port=self._bridge.default_port)
-            )
+            raise IDEBridgeError(INSTALL_INSTRUCTIONS.format(port=self._bridge.default_port)) from None
 
     async def disconnect(self) -> None:
         await self._bridge.disconnect()
@@ -177,7 +176,9 @@ class IntelliJBackend(TerminalBackend):
     ) -> str:
         result = await self._bridge.split_pane(direction=direction.value, session_id=session_id)
         new_id = result.get("new_session_id", "?") if isinstance(result, dict) else result
-        return f"Split {'vertically' if direction == SplitDirection.VERTICAL else 'horizontally'}. New session: {new_id}"
+        return (
+            f"Split {'vertically' if direction == SplitDirection.VERTICAL else 'horizontally'}. New session: {new_id}"
+        )
 
     async def create_window(
         self,
@@ -213,6 +214,4 @@ class IntelliJBackend(TerminalBackend):
         color: str | None = None,
         badge: str | None = None,
     ) -> str:
-        return await self._bridge.set_appearance(
-            session_id=session_id, title=title, color=color, badge=badge
-        )
+        return await self._bridge.set_appearance(session_id=session_id, title=title, color=color, badge=badge)
