@@ -227,7 +227,7 @@ class GhosttyTmuxBackend(TmuxBackend):
         self._ghostty_terminals[name] = term_id
         self._save_state()
         if command:
-            await self._tmux("send-keys", "-t", name, command, "Enter")
+            await self._tmux("send-keys", "-t", name, "--", command, "Enter")
         return None
 
     async def create_window(self, profile: str | None = None, command: str | None = None) -> str:

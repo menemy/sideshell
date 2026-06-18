@@ -443,14 +443,35 @@ class TestSplitAndCreate:
     @pytest.mark.asyncio
     async def test_create_window_with_command(self, backend):
         backend._tmux = AsyncMock(return_value="%11")
-        result = await backend.create_window(command="htop")
+        result = await backend.create_window(command="echo hello world")
         assert "pane_id: %11" in result
+        # Multi-word command is typed via send-keys (with "--" guard), NOT passed
+        # to new-session (which would exec it literally and kill the pane).
+        backend._tmux.assert_any_await("send-keys", "-t", "%11", "--", "echo hello world", "Enter")
+        new_session_call = backend._tmux.await_args_list[0]
+        assert new_session_call.args[0] == "new-session"
+        assert "echo hello world" not in new_session_call.args
+
+    @pytest.mark.asyncio
+    async def test_create_window_uses_unique_names(self, backend):
+        backend._tmux = AsyncMock(return_value="%1")
+        await backend.create_window()
+        await backend.create_window()
+        names = [c.args[3] for c in backend._tmux.await_args_list if c.args[0] == "new-session"]
+        assert len(names) == 2
+        assert names[0] != names[1]
 
     @pytest.mark.asyncio
     async def test_create_tab(self, backend):
         backend._tmux = AsyncMock(return_value="%12")
         result = await backend.create_tab()
         assert "pane_id: %12" in result
+
+    @pytest.mark.asyncio
+    async def test_create_tab_with_command_uses_send_keys(self, backend):
+        backend._tmux = AsyncMock(return_value="%12")
+        await backend.create_tab(command="ls -la /tmp")
+        backend._tmux.assert_any_await("send-keys", "-t", "%12", "--", "ls -la /tmp", "Enter")
 
     @pytest.mark.asyncio
     async def test_create_session_with_active_pane(self, backend):
