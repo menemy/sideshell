@@ -1022,57 +1022,64 @@
             await gsleep(3000);
         }
 
-        // ── Scenario 4: run the suite, watch it go red then green ───────────
+        // ── Scenario 4: run the suite in a split, watch it go red then green ─
         async function scenarioTests(tab) {
             const L = tab.paneL;
             await typeCmd(L, CLAUDE, 'run the test suite and fix whatever is red');
-            await emit(L, ['', tool('execute', 'command: "pytest -q", wait: true, watch_for: "prompt"')], 120);
-            await typeCmd(L, sh(), 'pytest -q', 24);
-            await emit(L, [
+            await emit(L, ['', reason("I'll run the suite in a split so you can watch it while I patch the failure."), '', tool('split', 'direction: "h"')], 110);
+            const R = await splitTab(tab, '<span class="text-shell-muted">● %2 · pytest</span>\n');
+            await emit(L, [ok('split — new pane %2'), '', tool('execute', 'session_id: "%2", command: "pytest -q"')], 130);
+            await typeCmd(R, sh(), 'pytest -q', 22);
+            await emit(R, [
                 '<span class="text-shell-green">........</span><span class="text-shell-amber">F</span><span class="text-shell-green">....</span>',
-                '<span class="text-shell-amber">FAILED tests/test_auth.py::test_expiry — assert 3600 == 7200</span>',
-                '<span class="text-shell-muted">1 failed, 12 passed in 2.1s</span>',
+                '<span class="text-shell-amber">FAILED test_auth.py::test_expiry</span>',
+                '<span class="text-shell-muted">  assert 3600 == 7200</span>',
+                '<span class="text-shell-muted">1 failed, 12 passed</span>',
                 '',
-                reason('Token TTL is half what it should be — fixing config.py and re-running.'),
-                tool('execute', 'command: "pytest -q"'),
-            ], 110);
-            await typeCmd(L, sh(), 'pytest -q', 24);
+            ], 95);
             await emit(L, [
+                reason('Token TTL is half what it should be — patching config.py:'),
+                '<span style="color:#f87171">  - TOKEN_TTL = 3600</span>',
+                '<span class="text-shell-green">  + TOKEN_TTL = 7200</span>',
+                '',
+                tool('execute', 'session_id: "%2", command: "pytest -q"'),
+            ], 120);
+            await typeCmd(R, sh(), 'pytest -q', 22);
+            await emit(R, [
                 '<span class="text-shell-green">.............</span>',
                 '<span class="text-shell-green">13 passed in 2.0s</span>',
-                '',
-                ok('green — you watched it go red, then green.'),
                 '<span class="cursor-blink text-shell-accent">▋</span>',
             ], 100);
+            await emit(L, ['', ok('green — you watched it go red, then green, in the split.')], 110);
             await gsleep(2800);
         }
 
-        // ── Scenario 5: drive an interactive psql REPL ──────────────────────
+        // ── Scenario 5: drive an interactive psql REPL in a split ───────────
         async function scenarioDb(tab) {
             const L = tab.paneL;
+            const PSQL = '<span class="text-shell-accent">prod=#</span> ';
             await typeCmd(L, CLAUDE, 'the /orders endpoint is slow — connect to the db and find out why');
-            await emit(L, ['', tool('execute', 'command: "psql $DATABASE_URL"')], 120);
-            await typeCmd(L, sh(), 'psql $DATABASE_URL', 22);
-            await emit(L, [
-                '<span class="text-shell-muted">psql (16.2) · type "help" for help.</span>',
+            await emit(L, ['', reason("I'll open a psql session in a split so you can watch the queries run."), '', tool('split', 'direction: "h"')], 110);
+            const R = await splitTab(tab, '<span class="text-shell-muted">● %2 · psql</span>\n');
+            await emit(L, [ok('split — new pane %2'), '', tool('execute', 'session_id: "%2", command: "psql $DATABASE_URL"')], 130);
+            await typeCmd(R, sh(), 'psql $DATABASE_URL', 20);
+            await emit(R, ['<span class="text-shell-muted">psql (16.2) · type "help" for help.</span>', ''], 90);
+            await emit(L, [tool('execute', 'session_id: "%2", command: "EXPLAIN ANALYZE …"')], 120);
+            await typeCmd(R, PSQL, 'EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id=42;', 10);
+            await emit(R, [
+                '<span class="text-shell-amber">Seq Scan on orders</span>',
+                '<span class="text-shell-amber">  (actual time=412 ms · rows=1)</span>',
                 '',
-                tool('execute', 'command: "EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 42;"'),
-            ], 110);
-            await typeCmd(L, '<span class="text-shell-accent">prod=#</span> ', 'EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 42;', 12);
-            await emit(L, [
-                '<span class="text-shell-amber">Seq Scan on orders  (cost=0..18234 rows=1) (actual time=412 ms)</span>',
-                '',
-                reason('Full sequential scan on orders.user_id — adding an index.'),
-                tool('execute', 'command: "CREATE INDEX CONCURRENTLY idx_orders_user ON orders(user_id);"'),
-            ], 110);
-            await typeCmd(L, '<span class="text-shell-accent">prod=#</span> ', 'CREATE INDEX CONCURRENTLY idx_orders_user ON orders(user_id);', 10);
-            await emit(L, [
+            ], 90);
+            await emit(L, [reason('Full sequential scan on orders.user_id — adding an index.'), tool('execute', 'session_id: "%2", command: "CREATE INDEX …"')], 120);
+            await typeCmd(R, PSQL, 'CREATE INDEX idx_orders_user ON orders(user_id);', 10);
+            await emit(R, [
                 '<span class="text-shell-muted">CREATE INDEX</span>',
-                '<span class="text-shell-green">Index Scan using idx_orders_user  (actual time=0.4 ms)</span>',
-                '',
-                ok('412 ms → 0.4 ms. An interactive psql session, driven live — every query in front of you.'),
+                '<span class="text-shell-green">Index Scan using idx_orders_user</span>',
+                '<span class="text-shell-green">  (actual time=0.4 ms)</span>',
                 '<span class="cursor-blink text-shell-accent">▋</span>',
-            ], 100);
+            ], 90);
+            await emit(L, ['', ok('412 ms → 0.4 ms — an interactive psql session, driven live in the split.')], 110);
             await gsleep(2800);
         }
 
