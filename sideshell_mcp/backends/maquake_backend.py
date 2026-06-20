@@ -22,16 +22,23 @@ from .base import (
 
 logger = logging.getLogger(__name__)
 
-MAQUAKE_SOCKET = "/tmp/maquake.sock"
+# Current builds listen on /tmp/macuake.sock; older builds used /tmp/maquake.sock.
+SOCKET_CANDIDATES = ("/tmp/macuake.sock", "/tmp/maquake.sock")
+
+
+def _resolve_socket() -> str:
+    """Return the first existing maquake/macuake socket (prefers the current name)."""
+    for path in SOCKET_CANDIDATES:
+        if os.path.exists(path):
+            return path
+    return SOCKET_CANDIDATES[0]
 
 
 class MaQuakeBackend(TerminalBackend):
     """maquake backend using Unix domain socket API.
 
-    maquake is a drop-down terminal (Quake-style) for macOS.
-    It supports tabs but not splits.
-
-    Session IDs are UUIDs assigned by maquake to each tab.
+    maquake (a.k.a. macuake) is a Quake-style drop-down terminal for macOS with
+    native tabs and split panes. Session IDs are UUIDs assigned per pane/tab.
     """
 
     def __init__(self) -> None:
@@ -43,7 +50,7 @@ class MaQuakeBackend(TerminalBackend):
 
     @property
     def is_available(self) -> bool:
-        return os.path.exists(MAQUAKE_SOCKET)
+        return any(os.path.exists(p) for p in SOCKET_CANDIDATES)
 
     async def _send(self, payload: dict) -> dict:
         """Send JSON request to maquake socket and return response.
@@ -57,7 +64,7 @@ class MaQuakeBackend(TerminalBackend):
         def _socket_rpc() -> bytes:
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             sock.settimeout(5.0)
-            sock.connect(MAQUAKE_SOCKET)
+            sock.connect(_resolve_socket())
             sock.sendall(data)
             sock.shutdown(socket.SHUT_WR)
             chunks = []
@@ -314,8 +321,14 @@ class MaQuakeBackend(TerminalBackend):
         return f"Last {lines} lines ({cols}x{rows}):\n{content}"
 
     async def clear_terminal(self, session_id: str | None = None) -> str:
-        # Send Ctrl+L to clear
-        return await self.send_control(ControlKey.L, session_id)
+        payload: dict = {"action": "clear"}
+        if session_id:
+            payload["session_id"] = session_id
+        resp = await self._send(payload)
+        if not resp.get("ok"):
+            # Older builds have no clear action — fall back to Ctrl+L.
+            return await self.send_control(ControlKey.L, session_id)
+        return "Terminal cleared"
 
     # --- Session Creation ---
 
@@ -324,8 +337,20 @@ class MaQuakeBackend(TerminalBackend):
         direction: SplitDirection,
         session_id: str | None = None,
     ) -> str:
-        # maquake is a drop-down terminal — no split support, create a new tab instead
-        return await self.create_tab()
+        # Native pane split (current builds). Falls back to a new tab on older
+        # builds that don't implement the "split" action.
+        payload: dict = {
+            "action": "split",
+            "direction": "h" if direction == SplitDirection.HORIZONTAL else "v",
+        }
+        if session_id:
+            payload["session_id"] = session_id
+        resp = await self._send(payload)
+        if not resp.get("ok"):
+            return await self.create_tab()
+        new_id = resp.get("session_id", "unknown")
+        word = "horizontally" if direction == SplitDirection.HORIZONTAL else "vertically"
+        return f"Split {word}. New session: {new_id}"
 
     async def create_window(
         self,

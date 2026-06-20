@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "sideshell-mcp"
 version = "1.0.0"
-description = "AI sidecar terminal - let Claude/Cursor run commands in a visible, persistent terminal you control"
+description = "AI sidecar terminal - let any MCP client run commands in a visible, persistent terminal you control"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"

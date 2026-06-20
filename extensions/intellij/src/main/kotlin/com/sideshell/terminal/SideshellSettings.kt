@@ -11,6 +11,10 @@ import com.intellij.openapi.components.*
 class SideshellSettings : PersistentStateComponent<SideshellSettings.State> {
     data class State(
         var approved: Boolean = false,
+        // Auto-start the socket bridge when a project opens.
+        var autoStart: Boolean = true,
+        // Max number of captured output lines kept per session (read buffer cap).
+        var outputBufferSize: Int = 5000,
     )
 
     private var myState = State()

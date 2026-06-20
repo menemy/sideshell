@@ -291,11 +291,15 @@ class WezTermBackend(TerminalBackend):
                 elif asyncio.get_running_loop().time() - last_change_time >= 2.0:
                     return f"Completed (stability) in {elapsed:.1f}s:\n{current_content[-2000:]}"
 
-    async def _capture_pane(self, pane_id: str) -> str:
-        """Capture pane content."""
+    async def _capture_pane(self, pane_id: str, lines: int = 200) -> str:
+        """Capture pane content, including scrollback.
+
+        ``wezterm cli get-text`` returns only the visible viewport by default;
+        ``--start-line=-N`` reaches back N lines into the scrollback so
+        ``read_terminal`` isn't limited to what's currently on screen.
+        """
         try:
-            # WezTerm doesn't have direct capture-pane, use get-text
-            output = await self._wezterm("get-text", "--pane-id", str(pane_id))
+            output = await self._wezterm("get-text", "--pane-id", str(pane_id), f"--start-line=-{lines}")
             return output
         except Exception:
             return ""

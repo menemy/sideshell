@@ -70,3 +70,6 @@ out/
 
 # Gradle / IntelliJ plugin build output
 .gradle/
+
+# Playwright MCP verification artifacts
+.playwright-mcp/

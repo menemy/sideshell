@@ -1,0 +1,56 @@
+# sideshell
+
+> An MCP server that lets any MCP client (Claude Code, Cursor, Codex, OpenCode, Pi, …) run shell commands in a visible, persistent terminal you control — across 8 terminal and IDE backends.
+
+sideshell turns the terminal you already use into a shared workspace the AI drives while you watch. Commands run in a real, visible terminal pane (not a hidden subprocess): you see every command, can intervene at any time — type sudo/SSH passwords yourself, they never reach the model — and sessions persist across AI restarts. It exposes 17 MCP tools and auto-detects your terminal, or you pin one with `--backend`.
+
+## Get started
+
+- Add to an MCP client (no install needed — uvx runs it on demand): `claude mcp add sideshell -- uvx sideshell-mcp`
+- Manual config (any MCP client): `{ "mcpServers": { "sideshell": { "command": "uvx", "args": ["sideshell-mcp"] } } }`
+- Pin a backend: add `"--backend", "<name>"` to `args` (names: iterm2, tmux, ghostty, wezterm, kitty, vscode, intellij, maquake).
+- Persistent install (optional): `pip install sideshell-mcp`. iTerm2 backend needs an extra: `pip install 'sideshell-mcp[iterm2]'` (quote the brackets in zsh).
+
+## Backends (8)
+
+- iTerm2 — macOS, native Python API (needs the `[iterm2]` extra)
+- tmux — macOS, Linux, WSL
+- Ghostty — macOS, native AppleScript splits + per-pane tmux engine
+- WezTerm — macOS, Linux, Windows
+- Kitty — macOS, Linux
+- VS Code / Cursor — extension over a Unix-socket bridge
+- JetBrains (IntelliJ, PyCharm, …) — plugin over a Unix-socket bridge
+- maquake — macOS, Quake-style drop-down terminal over a Unix socket
+
+Six terminal backends (tmux, Ghostty, WezTerm, Kitty, maquake — plus iTerm2 once its extra is installed) work straight from the base install. Three need a one-time setup, below.
+
+## Backend-specific setup
+
+Only these three need more than `uvx sideshell-mcp`:
+
+- **iTerm2**: install the extra — `pip install 'sideshell-mcp[iterm2]'` (or run the server as `uvx --from 'sideshell-mcp[iterm2]' sideshell-mcp`) — and enable iTerm2's Python API: Settings → General → Magic → "Enable Python API".
+- **VS Code / Cursor**: install the extension. Download `sideshell-vscode-<version>.vsix` from the releases page, then `code --install-extension sideshell-vscode-<version>.vsix` (Cursor: `cursor --install-extension …`) and reload the window. It auto-starts on `~/.sideshell/vscode.sock`.
+- **JetBrains** (IntelliJ, PyCharm, …): install the plugin. Download `sideshell-intellij-<version>.zip` from the releases page, then Settings → Plugins → ⚙ → "Install Plugin from Disk…" → pick the zip, and restart the IDE. It auto-starts on `~/.sideshell/intellij.sock`.
+
+Releases (artifacts): https://github.com/menemy/sideshell/releases
+
+## MCP tools (17)
+
+execute, read, list, new-session, new-tab, new-window, split, focus, close-session, control-char, paste, clear, get-terminal-state, set-appearance, set-color-preset, list-color-presets, show-alert
+
+## Docs
+
+- [README](https://github.com/menemy/sideshell/blob/main/README.md): overview, features, quick start
+- [API reference](https://github.com/menemy/sideshell/blob/main/API.md): every MCP tool and the control-key table
+- [Install guide](https://github.com/menemy/sideshell/blob/main/INSTALL.md): per-backend setup and requirements
+- [Security model](https://github.com/menemy/sideshell/blob/main/SECURITY.md): trust boundaries and reporting
+- [Changelog](https://github.com/menemy/sideshell/blob/main/CHANGELOG.md): release history
+- [Contributing](https://github.com/menemy/sideshell/blob/main/CONTRIBUTING.md): dev setup for the server and extensions
+
+## Links
+
+- Source: https://github.com/menemy/sideshell
+- PyPI: https://pypi.org/project/sideshell-mcp/
+- Site: https://sideshell.dev
+- Releases (IDE extension downloads): https://github.com/menemy/sideshell/releases
+- License: MIT

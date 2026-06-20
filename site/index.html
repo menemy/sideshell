@@ -4,7 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>sideshell — AI sidecar terminal</title>
-    <meta name="description" content="An MCP server that lets Claude, Cursor, and other AI assistants run commands in a visible, persistent terminal you control.">
+    <meta name="description" content="AI sidecar terminal — let any MCP-capable agent run commands in a visible, persistent terminal you control.">
+    <link rel="canonical" href="https://sideshell.dev/">
+
+    <!-- Social / Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="sideshell">
+    <meta property="og:title" content="sideshell — AI sidecar terminal">
+    <meta property="og:description" content="AI sidecar terminal — let any MCP-capable agent run commands in a visible, persistent terminal you control. 8 backends — iTerm2, tmux, Ghostty, WezTerm, Kitty, VS Code, JetBrains, macuake.">
+    <meta property="og:url" content="https://sideshell.dev/">
+    <meta property="og:image" content="https://sideshell.dev/og.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="sideshell — AI sidecar terminal">
+    <meta name="twitter:description" content="Your AI runs commands. You stay in control. A visible, persistent terminal for any MCP-capable agent — 8 backends.">
+    <meta name="twitter:image" content="https://sideshell.dev/og.png">
+    <meta name="twitter:creator" content="@menemy">
+
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9608;</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -34,6 +52,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <!-- xterm.js — real terminal emulator for the live demo -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+
     <style>
         body {
             background-color: #0a0e17;
@@ -46,6 +70,40 @@
         }
         .cursor-blink {
             animation: blink 1s step-end infinite;
+        }
+
+        /* Real text caret: solid inverse block when focused, hollow outline when not */
+        .caret {
+            background: #38bdf8;
+            color: #0a0e17;
+            border-radius: 1px;
+            animation: blink 1.1s step-end infinite;
+        }
+        .caret-hollow {
+            box-shadow: inset 0 0 0 1px #64748b;
+            border-radius: 1px;
+        }
+
+        /* macOS traffic lights — reveal ✕ / – / ⤢ on hover of the title bar */
+        .tl { position: relative; cursor: pointer; transition: filter .15s ease; }
+        .tl::after {
+            content: '';
+            position: absolute; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 8px; font-weight: 800; line-height: 1;
+            color: rgba(0, 0, 0, 0.55);
+            opacity: 0; transition: opacity .12s ease;
+        }
+        .tl-group:hover .tl { filter: brightness(1.1); }
+        .tl-group:hover .tl-close::after { content: '✕'; opacity: 1; }
+        .tl-group:hover .tl-min::after   { content: '–'; opacity: 1; }
+        .tl-group:hover .tl-max::after   { content: '⤢'; opacity: 1; }
+
+        /* Pulsing "live" indicator */
+        .live-dot { animation: livepulse 1.8s ease-in-out infinite; }
+        @keyframes livepulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.45); }
+            50% { opacity: 0.55; box-shadow: 0 0 0 4px rgba(74, 222, 128, 0); }
         }
 
         /* Terminal typing animation */
@@ -209,35 +267,29 @@
             </div>
 
             <!-- Terminal Mockup -->
-            <div class="relative max-w-3xl">
-                <div class="terminal-glow terminal-scanlines relative rounded-xl bg-[#0d1117] border border-shell-border overflow-hidden">
+            <div class="relative max-w-4xl">
+                <div class="terminal-glow terminal-scanlines relative rounded-xl bg-[#0d1117] border border-shell-border overflow-hidden" id="terminal">
                     <!-- Title bar -->
-                    <div class="flex items-center gap-2 px-4 py-3 bg-[#161b22] border-b border-shell-border">
-                        <div class="flex gap-1.5">
-                            <div class="w-3 h-3 rounded-full bg-[#ff5f57]"></div>
-                            <div class="w-3 h-3 rounded-full bg-[#febc2e]"></div>
-                            <div class="w-3 h-3 rounded-full bg-[#28c840]"></div>
+                    <div class="flex items-center gap-2 px-4 py-3 bg-[#161b22] border-b border-shell-border select-none" id="titlebar">
+                        <div class="tl-group flex gap-1.5">
+                            <div class="tl tl-close w-3 h-3 rounded-full bg-[#ff5f57]"></div>
+                            <div class="tl tl-min w-3 h-3 rounded-full bg-[#febc2e]"></div>
+                            <div class="tl tl-max w-3 h-3 rounded-full bg-[#28c840]"></div>
                         </div>
                         <div class="flex-1 text-center">
-                            <span class="text-xs text-shell-muted font-mono">sideshell -- iTerm2</span>
+                            <span class="inline-flex items-center gap-1.5 text-xs text-shell-muted font-mono">
+                                claude code &#8594; sideshell &#183;
+                                <span class="live-dot inline-block w-1.5 h-1.5 rounded-full bg-shell-green"></span>live
+                            </span>
                         </div>
                         <div class="w-12"></div>
                     </div>
 
-                    <!-- Terminal content -->
-                    <div class="p-5 font-mono text-sm leading-relaxed" id="terminal">
-                        <div class="terminal-line" data-delay="0">
-                            <span class="text-shell-green">claude</span><span class="text-shell-muted">@dev</span> <span class="text-shell-accent">~/project</span> <span class="text-shell-muted">$</span> <span class="text-white" id="typed-cmd"></span><span class="cursor-blink text-shell-accent">|</span>
-                        </div>
-                    </div>
-                </div>
+                    <!-- Tab strip (driven by the demo) -->
+                    <div class="flex flex-nowrap items-stretch gap-1 px-2 pt-2 bg-[#0d1117] border-b border-shell-border/60 font-mono text-xs overflow-x-auto" id="tabbar"></div>
 
-                <!-- Floating label -->
-                <div class="absolute -right-4 top-8 md:-right-8 hidden lg:block">
-                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-shell-surface border border-shell-border text-xs text-shell-muted shadow-lg">
-                        <span class="w-1.5 h-1.5 rounded-full bg-shell-green"></span>
-                        visible to you
-                    </div>
+                    <!-- Tab body: scenarios + split panes (driven by the demo) -->
+                    <div class="relative font-mono text-[12.5px] leading-relaxed h-[440px]" id="tabbody"></div>
                 </div>
             </div>
         </div>
@@ -316,6 +368,17 @@
                     <p class="text-shell-muted text-sm leading-relaxed">Intervene anytime -- enter passwords, answer prompts, Ctrl+C a runaway process. The terminal is yours.</p>
                 </div>
 
+                <!-- Feature: secrets stay yours -->
+                <div class="feature-card p-6 rounded-xl bg-shell-surface border border-shell-border">
+                    <div class="w-10 h-10 rounded-lg bg-shell-amber/10 border border-shell-amber/20 flex items-center justify-center mb-4">
+                        <svg class="w-5 h-5 text-shell-amber" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-white font-semibold mb-2">Secrets stay yours</h3>
+                    <p class="text-shell-muted text-sm leading-relaxed">When a command needs a `sudo` or SSH password, you type it into the terminal. The keystrokes go to the shell, never to the model.</p>
+                </div>
+
                 <!-- Feature 3 -->
                 <div class="feature-card p-6 rounded-xl bg-shell-surface border border-shell-border">
                     <div class="w-10 h-10 rounded-lg bg-purple-400/10 border border-purple-400/20 flex items-center justify-center mb-4">
@@ -335,7 +398,7 @@
                         </svg>
                     </div>
                     <h3 class="text-white font-semibold mb-2">Cross-platform</h3>
-                    <p class="text-shell-muted text-sm leading-relaxed">Native support for iTerm2, tmux, WezTerm, and Kitty. Works on macOS, Linux, and WSL.</p>
+                    <p class="text-shell-muted text-sm leading-relaxed">Eight native backends — iTerm2, tmux, Ghostty, WezTerm, Kitty, VS Code/Cursor, JetBrains, maquake. Works on macOS, Linux, and WSL.</p>
                 </div>
 
                 <!-- Feature 5 -->
@@ -380,7 +443,7 @@
                     <div class="w-56 p-5 rounded-xl bg-shell-surface border border-shell-border text-center">
                         <div class="text-xs text-shell-muted uppercase tracking-wider mb-2">MCP Client</div>
                         <div class="text-white font-semibold mb-1">AI Assistant</div>
-                        <div class="text-xs text-shell-muted">Claude Desktop, Claude Code,<br>Cursor, Windsurf, etc.</div>
+                        <div class="text-xs text-shell-muted">Claude Code, Cursor, Codex,<br>Windsurf, OpenCode, etc.</div>
                     </div>
 
                     <!-- Arrow -->
@@ -414,7 +477,7 @@
                     <div class="w-56 p-5 rounded-xl bg-shell-surface border border-shell-border text-center">
                         <div class="text-xs text-shell-muted uppercase tracking-wider mb-2">Terminal</div>
                         <div class="text-white font-semibold mb-1">Your Terminal</div>
-                        <div class="text-xs text-shell-muted">iTerm2, tmux,<br>WezTerm, Kitty</div>
+                        <div class="text-xs text-shell-muted">iTerm2, tmux, Ghostty, WezTerm,<br>Kitty, VS Code, JetBrains, maquake</div>
                     </div>
                 </div>
             </div>
@@ -460,7 +523,8 @@
             <div class="mb-12">
                 <h2 class="text-2xl md:text-3xl font-bold text-white mb-4">Supported terminals</h2>
                 <p class="text-shell-muted max-w-xl text-lg">
-                    Native backends for four terminal emulators. Auto-detection picks the right one.
+                    Eight native backends across terminal emulators and IDEs. Auto-detection picks the
+                    right one; <code class="text-shell-accent/80 bg-shell-accent/5 px-1 py-0.5 rounded text-xs font-mono">--backend</code> overrides.
                 </p>
             </div>
 
@@ -476,6 +540,11 @@
                     <span class="inline-block px-2 py-0.5 rounded text-xs bg-shell-green/10 text-shell-green border border-shell-green/20">Full support</span>
                 </div>
                 <div class="p-5 rounded-xl bg-shell-surface border border-shell-border text-center">
+                    <div class="font-mono text-white font-semibold mb-1">Ghostty</div>
+                    <div class="text-xs text-shell-muted mb-3">macOS</div>
+                    <span class="inline-block px-2 py-0.5 rounded text-xs bg-shell-accent/10 text-shell-accent border border-shell-accent/20">Native splits + tmux</span>
+                </div>
+                <div class="p-5 rounded-xl bg-shell-surface border border-shell-border text-center">
                     <div class="font-mono text-white font-semibold mb-1">WezTerm</div>
                     <div class="text-xs text-shell-muted mb-3">macOS, Linux, Windows</div>
                     <span class="inline-block px-2 py-0.5 rounded text-xs bg-shell-green/10 text-shell-green border border-shell-green/20">Full support</span>
@@ -484,6 +553,21 @@
                     <div class="font-mono text-white font-semibold mb-1">Kitty</div>
                     <div class="text-xs text-shell-muted mb-3">macOS, Linux</div>
                     <span class="inline-block px-2 py-0.5 rounded text-xs bg-shell-green/10 text-shell-green border border-shell-green/20">Full support</span>
+                </div>
+                <div class="p-5 rounded-xl bg-shell-surface border border-shell-border text-center">
+                    <div class="font-mono text-white font-semibold mb-1">VS Code / Cursor</div>
+                    <div class="text-xs text-shell-muted mb-3">macOS, Linux, Windows</div>
+                    <span class="inline-block px-2 py-0.5 rounded text-xs bg-shell-accent/10 text-shell-accent border border-shell-accent/20">Extension</span>
+                </div>
+                <div class="p-5 rounded-xl bg-shell-surface border border-shell-border text-center">
+                    <div class="font-mono text-white font-semibold mb-1">JetBrains</div>
+                    <div class="text-xs text-shell-muted mb-3">macOS, Linux, Windows</div>
+                    <span class="inline-block px-2 py-0.5 rounded text-xs bg-shell-accent/10 text-shell-accent border border-shell-accent/20">Plugin</span>
+                </div>
+                <div class="p-5 rounded-xl bg-shell-surface border border-shell-border text-center">
+                    <div class="font-mono text-white font-semibold mb-1">maquake</div>
+                    <div class="text-xs text-shell-muted mb-3">macOS</div>
+                    <span class="inline-block px-2 py-0.5 rounded text-xs bg-shell-green/10 text-shell-green border border-shell-green/20">Unix socket</span>
                 </div>
             </div>
         </div>
@@ -614,9 +698,9 @@
                 <span class="px-4 py-2 rounded-lg bg-shell-surface border border-shell-border text-sm text-white font-medium">Claude Code</span>
                 <span class="px-4 py-2 rounded-lg bg-shell-surface border border-shell-border text-sm text-white font-medium">Cursor</span>
                 <span class="px-4 py-2 rounded-lg bg-shell-surface border border-shell-border text-sm text-white font-medium">Windsurf</span>
-                <span class="px-4 py-2 rounded-lg bg-shell-surface border border-shell-border text-sm text-white font-medium">VSCode + Copilot</span>
-                <span class="px-4 py-2 rounded-lg bg-shell-surface border border-shell-border text-sm text-white font-medium">IntelliJ IDEA</span>
-                <span class="px-4 py-2 rounded-lg bg-shell-surface border border-shell-border text-sm text-white font-medium">PyCharm</span>
+                <span class="px-4 py-2 rounded-lg bg-shell-surface border border-shell-border text-sm text-white font-medium">Codex</span>
+                <span class="px-4 py-2 rounded-lg bg-shell-surface border border-shell-border text-sm text-white font-medium">OpenCode</span>
+                <span class="px-4 py-2 rounded-lg bg-shell-surface border border-shell-border text-sm text-white font-medium">Pi</span>
                 <span class="px-4 py-2 rounded-lg bg-shell-surface border border-shell-border text-sm text-shell-muted">...and any MCP-compatible client</span>
             </div>
         </div>
@@ -626,56 +710,62 @@
     <section id="install" class="py-20 border-t border-shell-border/50">
         <div class="max-w-6xl mx-auto px-6">
             <div class="mb-12">
-                <h2 class="text-2xl md:text-3xl font-bold text-white mb-4">Installation</h2>
+                <h2 class="text-2xl md:text-3xl font-bold text-white mb-4">Install &amp; connect</h2>
                 <p class="text-shell-muted max-w-xl text-lg">
-                    One command to install, a few lines of config to connect to your MCP client.
+                    With <code class="text-shell-accent/80 bg-shell-accent/5 px-1 py-0.5 rounded text-xs font-mono">uvx</code> there's
+                    nothing to install — your MCP client runs it on demand. Just add a few lines of config.
                 </p>
             </div>
 
             <div class="grid md:grid-cols-2 gap-8">
-                <!-- Quick install -->
+                <!-- Run it -->
                 <div>
-                    <h3 class="text-white font-semibold mb-4">Quick install</h3>
+                    <h3 class="text-white font-semibold mb-4">Add it to your MCP client</h3>
                     <div class="space-y-4">
-                        <!-- uvx -->
+                        <!-- CLI add (Claude Code) -->
                         <div class="rounded-xl bg-[#0d1117] border border-shell-border overflow-hidden">
                             <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-shell-border">
-                                <span class="text-xs text-shell-muted font-mono">uvx (recommended)</span>
+                                <span class="text-xs text-shell-muted font-mono">Claude Code — one command</span>
+                                <button onclick="copyToClipboard('claude mcp add sideshell -- uvx sideshell-mcp', this)" class="text-xs text-shell-muted hover:text-white transition-colors flex items-center gap-1 copy-btn">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"/></svg>
+                                    <span>Copy</span>
+                                </button>
+                            </div>
+                            <div class="p-4 font-mono text-sm leading-relaxed">
+                                <div><span class="text-shell-muted">$</span> <span class="text-white">claude mcp add sideshell -- uvx sideshell-mcp</span></div>
+                                <div class="text-shell-muted mt-1"># pin a backend:</div>
+                                <div><span class="text-shell-muted">$</span> <span class="text-white">claude mcp add sideshell -- uvx sideshell-mcp --backend ghostty</span></div>
+                            </div>
+                        </div>
+
+                        <!-- uvx (zero install) -->
+                        <div class="rounded-xl bg-[#0d1117] border border-shell-border overflow-hidden">
+                            <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-shell-border">
+                                <span class="text-xs text-shell-muted font-mono">uvx — no sideshell install (needs uv)</span>
                                 <button onclick="copyToClipboard('uvx sideshell-mcp', this)" class="text-xs text-shell-muted hover:text-white transition-colors flex items-center gap-1 copy-btn">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"/></svg>
                                     <span>Copy</span>
                                 </button>
                             </div>
-                            <div class="p-4 font-mono text-sm">
-                                <span class="text-shell-muted">$</span> <span class="text-white">uvx sideshell-mcp</span>
+                            <div class="p-4 font-mono text-sm leading-relaxed">
+                                <div class="text-shell-muted text-xs"># one-time: install uv (provides uvx)</div>
+                                <div><span class="text-shell-muted">$</span> <span class="text-white">brew install uv</span> <span class="text-shell-muted text-xs">· or: curl -LsSf https://astral.sh/uv/install.sh | sh</span></div>
+                                <div class="mt-1"><span class="text-shell-muted">$</span> <span class="text-white">uvx sideshell-mcp</span></div>
                             </div>
                         </div>
 
-                        <!-- pip -->
+                        <!-- optional persistent install -->
                         <div class="rounded-xl bg-[#0d1117] border border-shell-border overflow-hidden">
                             <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-shell-border">
-                                <span class="text-xs text-shell-muted font-mono">pip</span>
+                                <span class="text-xs text-shell-muted font-mono">prefer a persistent install? (optional)</span>
                                 <button onclick="copyToClipboard('pip install sideshell-mcp', this)" class="text-xs text-shell-muted hover:text-white transition-colors flex items-center gap-1 copy-btn">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"/></svg>
                                     <span>Copy</span>
                                 </button>
                             </div>
-                            <div class="p-4 font-mono text-sm">
-                                <span class="text-shell-muted">$</span> <span class="text-white">pip install sideshell-mcp</span>
-                            </div>
-                        </div>
-
-                        <!-- pipx -->
-                        <div class="rounded-xl bg-[#0d1117] border border-shell-border overflow-hidden">
-                            <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-shell-border">
-                                <span class="text-xs text-shell-muted font-mono">pipx</span>
-                                <button onclick="copyToClipboard('pipx install sideshell-mcp', this)" class="text-xs text-shell-muted hover:text-white transition-colors flex items-center gap-1 copy-btn">
-                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"/></svg>
-                                    <span>Copy</span>
-                                </button>
-                            </div>
-                            <div class="p-4 font-mono text-sm">
-                                <span class="text-shell-muted">$</span> <span class="text-white">pipx install sideshell-mcp</span>
+                            <div class="p-4 font-mono text-sm leading-relaxed">
+                                <div><span class="text-shell-muted">$</span> <span class="text-white">pip install sideshell-mcp</span></div>
+                                <div><span class="text-shell-muted">$</span> <span class="text-white">pipx install sideshell-mcp</span></div>
                             </div>
                         </div>
                     </div>
@@ -706,16 +796,25 @@
                             </div>
                         </div>
 
-                        <!-- Backend selection -->
+                        <!-- Pin a specific backend in the config -->
                         <div class="rounded-xl bg-[#0d1117] border border-shell-border overflow-hidden">
                             <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-shell-border">
-                                <span class="text-xs text-shell-muted font-mono">Force a specific backend</span>
+                                <span class="text-xs text-shell-muted font-mono">Pin a specific terminal (add --backend)</span>
+                                <button onclick="copyToClipboard('{\n  &quot;mcpServers&quot;: {\n    &quot;sideshell&quot;: {\n      &quot;command&quot;: &quot;uvx&quot;,\n      &quot;args&quot;: [&quot;sideshell-mcp&quot;, &quot;--backend&quot;, &quot;ghostty&quot;]\n    }\n  }\n}', this)" class="text-xs text-shell-muted hover:text-white transition-colors flex items-center gap-1 copy-btn">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"/></svg>
+                                    <span>Copy</span>
+                                </button>
                             </div>
-                            <div class="p-4 font-mono text-sm space-y-1">
-                                <div><span class="text-shell-muted">$</span> <span class="text-white">uvx sideshell-mcp --backend=tmux</span></div>
-                                <div><span class="text-shell-muted">$</span> <span class="text-white">uvx sideshell-mcp --backend=iterm2</span></div>
-                                <div><span class="text-shell-muted">$</span> <span class="text-white">uvx sideshell-mcp --backend=wezterm</span></div>
-                                <div><span class="text-shell-muted">$</span> <span class="text-white">uvx sideshell-mcp --backend=kitty</span></div>
+                            <div class="p-4 font-mono text-sm leading-relaxed">
+                                <pre class="text-white">{
+  <span class="text-shell-accent">"mcpServers"</span>: {
+    <span class="text-shell-accent">"sideshell"</span>: {
+      <span class="text-shell-accent">"command"</span>: <span class="text-shell-green">"uvx"</span>,
+      <span class="text-shell-accent">"args"</span>: [<span class="text-shell-green">"sideshell-mcp"</span>, <span class="text-shell-green">"--backend"</span>, <span class="text-shell-green">"ghostty"</span>]
+    }
+  }
+}</pre>
+                                <div class="text-xs text-shell-muted mt-3 leading-relaxed">backends: <span class="text-shell-accent/80">iterm2 · tmux · ghostty · wezterm · kitty · vscode · intellij · maquake</span></div>
                             </div>
                         </div>
                     </div>
@@ -726,7 +825,7 @@
                 <div class="flex items-start gap-3">
                     <span class="text-shell-amber text-sm mt-0.5">*</span>
                     <p class="text-shell-muted text-sm">
-                        <strong class="text-white">Requirements:</strong> Python 3.11+ and at least one supported terminal emulator. By default, sideshell auto-detects your available terminal. Use <code class="text-shell-accent/80 bg-shell-accent/5 px-1 py-0.5 rounded text-xs font-mono">--backend</code> to override.
+                        <strong class="text-white">Requirements:</strong> Python 3.11+ and at least one supported terminal emulator. By default, sideshell auto-detects your available terminal. Use <code class="text-shell-accent/80 bg-shell-accent/5 px-1 py-0.5 rounded text-xs font-mono">--backend</code> to override. Every backend works with the base install; only iTerm2 needs an extra — <code class="text-shell-accent/80 bg-shell-accent/5 px-1 py-0.5 rounded text-xs font-mono">pip install 'sideshell-mcp[iterm2]'</code>.
                     </p>
                 </div>
             </div>
@@ -759,77 +858,955 @@
 
     <!-- Scripts -->
     <script>
-        // Terminal typing animation
-        const commands = [
-            { cmd: 'npm test', delay: 60 },
-            { cmd: '', pause: 400 },
+        // ── Live "Claude Code → sideshell" demo: tabs, scenarios, real split ──
+        const term = document.getElementById('terminal');
+        const tabbar = document.getElementById('tabbar');
+        const tabbody = document.getElementById('tabbody');
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+        // Cancellable wait: throws if the run token changed (a click / new run).
+        let tok = 0;
+        async function gsleep(ms) { const my = tok; await sleep(ms); if (my !== tok) throw 'ABORT'; }
+
+        let tabs = [];
+        let activeIndex = 0;
+
+        function activate(i) {
+            activeIndex = i;
+            if (activePane && tabs[i] && !tabs[i].body.contains(activePane)) activePane = null;
+            tabs.forEach((t, idx) => {
+                const on = idx === i;
+                t.body.style.opacity = on ? '1' : '0';
+                t.body.style.pointerEvents = on ? 'auto' : 'none';
+                t.chip.dataset.active = on ? '1' : '0';
+                t.chip.style.color = on ? '#e2e8f0' : '#64748b';
+                t.chip.style.background = on ? '#0d1117' : 'transparent';
+                t.chip.style.borderBottom = on ? '2px solid #38bdf8' : '2px solid transparent';
+            });
+        }
+
+        function resetTab(i) {
+            const t = tabs[i];
+            t.body.querySelectorAll('.pane').forEach((p) => { if (p.__sh && p.__sh.timer) clearInterval(p.__sh.timer); });
+            if (activePane && t.body.contains(activePane)) activePane = null;
+            t.body.innerHTML = '';
+            const paneL = document.createElement('div');
+            paneL.className = 'pane flex-1 min-w-0 overflow-y-auto p-4 whitespace-pre-wrap';
+            t.body.appendChild(paneL);
+            t.paneL = paneL;
+            t.paneR = null;
+        }
+
+        function hideHint() { const h = document.getElementById('tabhint'); if (h) h.style.opacity = '0'; }
+
+        // Build all tabs up front so they're visible immediately and clickable.
+        function buildTabs() {
+            tabbar.innerHTML = '';
+            tabbody.innerHTML = '';
+            tabs = [];
+            scenarios.forEach((sc, i) => {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'tabchip flex items-center gap-2 px-3 py-1.5 rounded-t-md cursor-pointer transition-colors';
+                chip.style.borderBottom = '2px solid transparent';
+                chip.style.color = '#64748b';
+                chip.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-shell-green"></span><span>' + sc.title + '</span>';
+                chip.addEventListener('click', () => pick(i));
+                chip.addEventListener('mouseenter', () => { if (chip.dataset.active !== '1') chip.style.color = '#cbd5e1'; });
+                chip.addEventListener('mouseleave', () => { if (chip.dataset.active !== '1') chip.style.color = '#64748b'; });
+                tabbar.appendChild(chip);
+
+                const body = document.createElement('div');
+                body.className = 'absolute inset-0 flex transition-opacity duration-300';
+                body.style.opacity = '0';
+                tabbody.appendChild(body);
+                tabs.push({ chip, body, paneL: null, paneR: null });
+            });
+
+            tabs.forEach((t, i) => resetTab(i));
+            activate(0);
+        }
+
+        // Animate a horizontal split into a tab; returns the new right pane.
+        async function splitTab(tab, headerHtml) {
+            const divider = document.createElement('div');
+            divider.className = 'self-stretch w-1 cursor-col-resize bg-shell-border hover:bg-shell-accent/60';
+            divider.style.opacity = '0';
+            divider.style.transition = 'opacity .4s ease, background-color .15s ease';
+            // Drag to resize the split.
+            divider.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                const rect = tab.body.getBoundingClientRect();
+                paneRef.style.transition = 'none';
+                const move = (ev) => {
+                    let pct = ((rect.right - ev.clientX) / rect.width) * 100;
+                    pct = Math.max(18, Math.min(82, pct));
+                    paneRef.style.flex = '0 0 ' + pct + '%';
+                };
+                const up = () => {
+                    document.removeEventListener('mousemove', move);
+                    document.removeEventListener('mouseup', up);
+                    document.body.style.userSelect = '';
+                };
+                document.body.style.userSelect = 'none';
+                document.addEventListener('mousemove', move);
+                document.addEventListener('mouseup', up);
+            });
+            const paneR = document.createElement('div');
+            const paneRef = paneR;
+            paneR.className = 'pane min-w-0 overflow-y-auto p-4 whitespace-pre-wrap';
+            paneR.style.cssText = 'flex:0 0 0%; opacity:0; transition: flex-basis .55s ease, opacity .5s ease;';
+            if (headerHtml) {
+                const h = document.createElement('div');
+                h.innerHTML = headerHtml;
+                paneR.appendChild(h);
+            }
+            tab.body.appendChild(divider);
+            tab.body.appendChild(paneR);
+            await gsleep(60);
+            divider.style.opacity = '1';
+            paneR.style.flex = '0 0 50%';
+            paneR.style.opacity = '1';
+            await gsleep(650);
+            tab.paneR = paneR;
+            return paneR;
+        }
+
+        function scrollPane(p) { p.scrollTop = p.scrollHeight; }
+
+        function line(pane, html) {
+            const d = document.createElement('div');
+            d.innerHTML = html === '' ? '&nbsp;' : html;
+            pane.appendChild(d);
+            scrollPane(pane);
+            return d;
+        }
+
+        async function emit(pane, lines, delay) {
+            for (const l of lines) { line(pane, l); await gsleep(delay || 80); }
+        }
+
+        // Typewriter a command after a prompt, into a pane.
+        async function typeCmd(pane, promptHtml, cmd, base) {
+            const wrap = line(pane, promptHtml + '<span class="cmd text-white"></span><span class="cursor-blink text-shell-accent">▋</span>');
+            const span = wrap.querySelector('.cmd');
+            const cur = wrap.querySelector('.cursor-blink');
+            for (const ch of cmd) { span.textContent += ch; scrollPane(pane); await gsleep((base || 32) + Math.random() * 46); }
+            cur.remove();
+            await gsleep(480); // beat: the command "runs" before output appears
+        }
+
+        // A deliberate pause (command running, connecting, thinking…).
+        const think = (ms) => gsleep(ms);
+
+        // Human types a reply (e.g. a password) char-by-char after a static prefix.
+        async function typeReply(pane, prefixHtml, text, cls) {
+            const wrap = line(pane, prefixHtml + '<span class="reply ' + (cls || 'text-shell-muted') + '"></span><span class="cursor-blink text-shell-accent">▋</span>');
+            const span = wrap.querySelector('.reply');
+            const cur = wrap.querySelector('.cursor-blink');
+            for (const ch of text) { span.textContent += ch; scrollPane(pane); await gsleep(120 + Math.random() * 90); }
+            cur.remove();
+        }
+
+        const CLAUDE = '<span style="color:#d97757">&gt;</span> ';
+        const sh = (host) => '<span class="text-shell-green">' + (host || 'you@mac') + '</span> <span class="text-shell-accent">~</span> <span class="text-shell-muted">$</span> ';
+        const reason = (t) => '<span class="text-shell-muted">  ' + t + '</span>';
+        const ok = (t) => '<span class="text-shell-green">  ✓ ' + t + '</span>';
+
+        function tool(name, arg) {
+            const a = arg ? '<span style="color:#a5b4fc">' + arg + '</span>' : '';
+            return '<span class="text-shell-muted">  ⎿ </span><span style="color:#d97757">sideshell</span>' +
+                '<span class="text-shell-muted"> · </span><span class="text-white">' + name + '</span>' +
+                '<span class="text-shell-muted">(</span>' + a + '<span class="text-shell-muted">) · MCP</span>';
+        }
+
+        async function banner(pane) {
+            await emit(pane, [
+                '<span style="color:#d97757"> ▐▛███▜▌</span>   <span class="text-white font-semibold">Claude Code</span> <span class="text-shell-muted">v2.x · Opus 4.8</span>',
+                '<span style="color:#d97757">▝▜█████▛▘</span>  <span class="text-shell-muted">sideshell MCP connected · 8 backends</span>',
+                '<span style="color:#d97757">  ▘▘ ▝▝</span>',
+                '',
+            ], 120);
+        }
+
+        // ── Scenario 1: dev server in a real split ──────────────────────────
+        async function scenarioWeb(tab) {
+            const L = tab.paneL;
+            await banner(L);
+            await typeCmd(L, CLAUDE, 'spin up the vite dev server in a split so I can watch the logs while we work');
+            await emit(L, ['', reason("I'll split this tab and start the dev server in the new pane so it stays visible."), ''], 90);
+            await emit(L, [tool('split', 'direction: "h"')], 150);
+            const R = await splitTab(tab, '<span class="text-shell-muted">● %2 · ~/app</span>\n');
+            await emit(L, [ok('split — new pane %2'), '', tool('execute', 'session_id: "%2", command: "npm run dev"')], 150);
+            await typeCmd(R, sh(), 'npm run dev', 26);
+            await think(800); // dev server boots
+            beginProcess(R, longRunning('npm run dev')); // real hanging process — Ctrl+C to stop, then type
+            await emit(L, ['', ok('dev server live & streaming on the right — click it, hit Ctrl-C, then type.')], 120);
+            await gsleep(4200);
+        }
+
+        // ── Scenario 2: SSH into prod in a split (you type the secret) ───────
+        async function scenarioProd(tab) {
+            const L = tab.paneL;
+            await typeCmd(L, CLAUDE, 'api p99 latency just spiked — ssh into prod-1 and find the cause');
+            await emit(L, ['', reason("I'll open a split and work on prod-1 in the new pane so you can watch it live."), '', tool('split', 'direction: "h"')], 110);
+            const R = await splitTab(tab, '<span class="text-shell-muted">● %2 · deploy@prod-1</span>\n');
+            await emit(L, [ok('split — new pane %2'), '', tool('execute', 'session_id: "%2", command: "ssh deploy@prod-1"')], 130);
+            await typeCmd(R, sh(), 'ssh deploy@prod-1', 22);
+            await think(750); // connecting, prompts for the password
+            await typeReply(R, "<span class=\"text-shell-muted\">deploy@prod-1's password: </span>", '••••••••');
+            await think(500);
+            await emit(R, [
+                '<span class="text-shell-amber">↑ you typed it — the AI never sees secrets</span>',
+                '<span class="text-shell-muted">Welcome to Ubuntu 22.04.4 LTS</span>',
+                '',
+            ], 130);
+            await emit(L, [tool('execute', 'session_id: "%2", command: "docker stats --no-stream"')], 130);
+            await typeCmd(R, sh('deploy@prod-1'), 'docker stats --no-stream', 18);
+            await emit(R, [
+                '<span class="text-shell-muted">CONTAINER  CPU%   MEM</span>',
+                '<span class="text-shell-amber">api        98.4%  1.8GiB</span>',
+                '<span class="text-white">worker      2.1%  240MiB</span>',
+                '',
+            ], 90);
+            await emit(L, [reason('api is pegged — checking its logs.'), tool('execute', 'session_id: "%2", command: "docker logs --since 2m api | tail"')], 120);
+            await typeCmd(R, sh('deploy@prod-1'), 'docker logs --since 2m api | tail', 14);
+            await emit(R, [
+                '<span style="color:#f87171">ERROR asyncpg: pool exhausted (size=10, waiting=37)</span>',
+                '<span class="text-shell-muted">  at Pool.acquire (db/pool.py:88)</span>',
+                '',
+            ], 90);
+            await emit(L, [reason('DB pool exhausted under load — restarting api with a bigger pool.'), tool('execute', 'session_id: "%2", command: "docker compose up -d --no-deps api"')], 120);
+            await typeCmd(R, sh('deploy@prod-1'), 'docker compose up -d --no-deps api', 14);
+            await emit(R, [
+                '<span class="text-shell-muted">Recreating api … done</span>',
+                '<span class="text-shell-green">api   4.2%   620MiB   ✓ healthy</span>',
+                '<span class="cursor-blink text-shell-accent">▋</span>',
+            ], 95);
+            await emit(L, ['', ok('p99 back to normal — you watched the whole fix on prod, live.')], 110);
+            await gsleep(2600);
+        }
+
+        // ── Scenario: a privileged command — YOU type the sudo password ─────
+        async function scenarioSudo(tab) {
+            const L = tab.paneL;
+            await typeCmd(L, CLAUDE, 'reload nginx on staging after my config change');
+            await emit(L, ['', reason("This needs root. I'll run it in a split — you type the sudo password; it goes straight to the terminal, never to me."), '', tool('split', 'direction: "h"')], 110);
+            const R = await splitTab(tab, '<span class="text-shell-muted">● %2 · staging</span>\n');
+            await emit(L, [ok('split — new pane %2'), '', tool('execute', 'session_id: "%2", command: "sudo nginx -t && sudo systemctl reload nginx"')], 130);
+            await typeCmd(R, sh(), 'sudo nginx -t && sudo systemctl reload nginx', 16);
+            await think(700); // sudo prompts for the password
+            await typeReply(R, '<span class="text-shell-muted">[sudo] password for you: </span>', '••••••••');
+            await think(500);
+            await emit(R, ['<span class="text-shell-amber">↑ you typed it — keystrokes go to the terminal; the AI never sees it</span>', ''], 130);
+            await think(650); // testing config + reloading
+            await emit(R, [
+                '<span class="text-shell-muted">nginx: configuration file /etc/nginx/nginx.conf test is successful</span>',
+                '<span class="text-shell-green">● nginx.service — active (running)</span>',
+                '<span class="cursor-blink text-shell-accent">▋</span>',
+            ], 170);
+            await think(400);
+            await emit(L, ['', ok('reloaded — you authorized it with your own password. I only ever saw "success".')], 110);
+            await gsleep(2800);
+        }
+
+        // ── Scenario 3: reclaim disk space in a split ───────────────────────
+        async function scenarioDisk(tab) {
+            const L = tab.paneL;
+            await typeCmd(L, CLAUDE, 'docker is eating my disk — clean it up and show me what you freed');
+            await emit(L, ['', reason("I'll run this in a split so you can watch the space come back."), '', tool('split', 'direction: "h"')], 110);
+            const R = await splitTab(tab, '<span class="text-shell-muted">● %2 · cleanup</span>\n');
+            await emit(L, [ok('split — new pane %2'), '', tool('execute', 'session_id: "%2", command: "df -h /"')], 130);
+            await typeCmd(R, sh(), 'df -h /', 22);
+            await emit(R, [
+                '<span class="text-shell-muted">Filesystem      Size  Used  Avail  Cap</span>',
+                '<span class="text-shell-amber">/dev/disk3s1   460G  431G    29G  94%</span>',
+                '',
+            ], 95);
+            await emit(L, [tool('execute', 'session_id: "%2", command: "docker system prune -af"')], 120);
+            await typeCmd(R, sh(), 'docker system prune -af', 18);
+            await emit(R, [
+                '<span class="text-shell-muted">Deleted images, networks &amp; build cache …</span>',
+                '<span class="text-white">Total reclaimed space: 14.21GB</span>',
+                '',
+            ], 95);
+            await emit(L, [tool('execute', 'session_id: "%2", command: "df -h /"')], 120);
+            await typeCmd(R, sh(), 'df -h /', 22);
+            await emit(R, [
+                '<span class="text-shell-green">/dev/disk3s1   460G  416G    44G  91%</span>',
+                '<span class="cursor-blink text-shell-accent">▋</span>',
+            ], 95);
+            await emit(L, ['', ok('freed <b>14.2 GB</b> — every command ran in the split, in front of you.')], 110);
+            await gsleep(3000);
+        }
+
+        // ── Scenario 4: run the suite in a split, watch it go red then green ─
+        async function scenarioTests(tab) {
+            const L = tab.paneL;
+            await typeCmd(L, CLAUDE, 'run the test suite and fix whatever is red');
+            await emit(L, ['', reason("I'll run the suite in a split so you can watch it while I patch the failure."), '', tool('split', 'direction: "h"')], 110);
+            const R = await splitTab(tab, '<span class="text-shell-muted">● %2 · pytest</span>\n');
+            await emit(L, [ok('split — new pane %2'), '', tool('execute', 'session_id: "%2", command: "pytest -q"')], 130);
+            await typeCmd(R, sh(), 'pytest -q', 22);
+            await emit(R, [
+                '<span class="text-shell-green">........</span><span class="text-shell-amber">F</span><span class="text-shell-green">....</span>',
+                '<span class="text-shell-amber">FAILED test_auth.py::test_expiry</span>',
+                '<span class="text-shell-muted">  assert 3600 == 7200</span>',
+                '<span class="text-shell-muted">1 failed, 12 passed</span>',
+                '',
+            ], 95);
+            await emit(L, [
+                reason('Token TTL is half what it should be — patching config.py:'),
+                '<span style="color:#f87171">  - TOKEN_TTL = 3600</span>',
+                '<span class="text-shell-green">  + TOKEN_TTL = 7200</span>',
+                '',
+                tool('execute', 'session_id: "%2", command: "pytest -q"'),
+            ], 120);
+            await typeCmd(R, sh(), 'pytest -q', 22);
+            await emit(R, [
+                '<span class="text-shell-green">.............</span>',
+                '<span class="text-shell-green">13 passed in 2.0s</span>',
+                '<span class="cursor-blink text-shell-accent">▋</span>',
+            ], 100);
+            await emit(L, ['', ok('green — you watched it go red, then green, in the split.')], 110);
+            await gsleep(2800);
+        }
+
+        // ── Scenario 5: drive an interactive psql REPL in a split ───────────
+        async function scenarioDb(tab) {
+            const L = tab.paneL;
+            const PSQL = '<span class="text-shell-accent">prod=#</span> ';
+            await typeCmd(L, CLAUDE, 'the /orders endpoint is slow — connect to the db and find out why');
+            await emit(L, ['', reason("I'll open a psql session in a split so you can watch the queries run."), '', tool('split', 'direction: "h"')], 110);
+            const R = await splitTab(tab, '<span class="text-shell-muted">● %2 · psql</span>\n');
+            await emit(L, [ok('split — new pane %2'), '', tool('execute', 'session_id: "%2", command: "psql $DATABASE_URL"')], 130);
+            await typeCmd(R, sh(), 'psql $DATABASE_URL', 20);
+            await emit(R, ['<span class="text-shell-muted">psql (16.2) · type "help" for help.</span>', ''], 90);
+            await emit(L, [tool('execute', 'session_id: "%2", command: "EXPLAIN ANALYZE …"')], 120);
+            await typeCmd(R, PSQL, 'EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id=42;', 10);
+            await emit(R, [
+                '<span class="text-shell-amber">Seq Scan on orders</span>',
+                '<span class="text-shell-amber">  (actual time=412 ms · rows=1)</span>',
+                '',
+            ], 90);
+            await emit(L, [reason('Full sequential scan on orders.user_id — adding an index.'), tool('execute', 'session_id: "%2", command: "CREATE INDEX …"')], 120);
+            await typeCmd(R, PSQL, 'CREATE INDEX idx_orders_user ON orders(user_id);', 10);
+            await emit(R, [
+                '<span class="text-shell-muted">CREATE INDEX</span>',
+                '<span class="text-shell-green">Index Scan using idx_orders_user</span>',
+                '<span class="text-shell-green">  (actual time=0.4 ms)</span>',
+                '<span class="cursor-blink text-shell-accent">▋</span>',
+            ], 90);
+            await emit(L, ['', ok('412 ms → 0.4 ms — an interactive psql session, driven live in the split.')], 110);
+            await gsleep(2800);
+        }
+
+        // ── Scenario 6: tail logs next to the worker, in a split ────────────
+        async function scenarioLogs(tab) {
+            const L = tab.paneL;
+            await typeCmd(L, CLAUDE, 'start the queue worker and tail its logs next to it so I can keep an eye on it');
+            await emit(L, ['', reason("I'll start the worker, then split and tail its log in the new pane."), '', tool('execute', 'command: "python -m worker"')], 110);
+            await typeCmd(L, sh(), 'python -m worker', 22);
+            await emit(L, ['<span class="text-shell-muted">[boot] worker online · polling “jobs”</span>', '', tool('split', 'direction: "h"')], 120);
+            const R = await splitTab(tab, '<span class="text-shell-muted">● %2 · tail -f</span>\n');
+            await emit(L, [ok('split — new pane %2'), '', tool('execute', 'session_id: "%2", command: "tail -f logs/worker.log"')], 130);
+            await typeCmd(R, sh(), 'tail -f logs/worker.log', 18);
+            beginProcess(R, longRunning('tail -f logs/worker.log')); // real stream — Ctrl+C to stop, then type
+            await emit(L, ['', ok('worker left, logs streaming right — click the log pane, Ctrl-C, then type.')], 110);
+            await gsleep(4200);
+        }
+
+        // ── Scenario 7: fan out across a 4-server cluster (2×2, top each) ────
+        async function scenarioCluster(tab) {
+            tab.body.innerHTML = '';
+            tab.body.className = 'absolute inset-0 flex flex-col';
+            const top = document.createElement('div');
+            top.className = 'shrink-0 px-4 pt-3 pb-2 whitespace-pre-wrap border-b border-shell-border/60';
+            const grid = document.createElement('div');
+            grid.className = 'grid grid-cols-2 grid-rows-2 flex-1 min-h-0';
+            tab.body.appendChild(top);
+            tab.body.appendChild(grid);
+
+            await typeCmd(top, CLAUDE, 'ssh into all four app servers and show me live load on each');
+            await emit(top, ['', reason('Opening a 2×2 split — one pane per server with top running.'), tool('split', 'panes: 4 · ssh prod-1..4 && top')], 110);
+
+            const servers = [
+                { h: 'prod-1', load: '0.42 0.55 0.61', hot: false, p: [['gunicorn', '14%'], ['postgres', ' 6%']] },
+                { h: 'prod-2', load: '0.38 0.49 0.52', hot: false, p: [['gunicorn', '11%'], ['redis', ' 3%']] },
+                { h: 'prod-3', load: '1.91 1.46 1.02', hot: true, p: [['ffmpeg', '94%'], ['gunicorn', ' 9%']] },
+                { h: 'prod-4', load: '0.21 0.27 0.30', hot: false, p: [['gunicorn', ' 7%'], ['cron', ' 0%']] },
+            ];
+            const panes = servers.map((s, i) => {
+                const p = document.createElement('div');
+                p.className = 'pane overflow-hidden p-3 whitespace-pre-wrap border-shell-border ' +
+                    (i % 2 === 0 ? 'border-r ' : '') + (i < 2 ? 'border-b ' : '');
+                p.style.opacity = '0';
+                p.style.transition = 'opacity .35s ease';
+                grid.appendChild(p);
+                return p;
+            });
+            for (const p of panes) { p.style.opacity = '1'; await gsleep(150); }
+
+            for (let i = 0; i < servers.length; i++) {
+                await typeCmd(panes[i], sh(), 'ssh ' + servers[i].h, 12);
+            }
+            for (let i = 0; i < servers.length; i++) {
+                const s = servers[i];
+                const lc = s.hot ? 'text-shell-amber' : 'text-shell-green';
+                const c0 = parseInt(s.p[0][1], 10) > 50 ? 'text-shell-amber' : 'text-white';
+                await emit(panes[i], [
+                    '<span class="' + lc + '">' + s.h + '  load ' + s.load + '</span>',
+                    '<span class="text-shell-muted">PID   %CPU  CMD</span>',
+                    '<span class="' + c0 + '">' + (1000 + i) + '  ' + s.p[0][1] + '  ' + s.p[0][0] + '</span>',
+                    '<span class="text-shell-muted">' + (2000 + i) + '  ' + s.p[1][1] + '  ' + s.p[1][0] + '</span>',
+                ], 70);
+            }
+            await emit(top, ['', ok('all 4 servers live at once — prod-3 is hot (ffmpeg 94%), the rest are healthy.')], 110);
+            await gsleep(3200);
+        }
+
+        // Scenario registry — drives the tab strip and the autoplay order.
+        const scenarios = [
+            { title: 'web', run: scenarioWeb },
+            { title: 'prod', run: scenarioProd },
+            { title: 'sudo', run: scenarioSudo },
+            { title: 'prod cluster', run: scenarioCluster },
+            { title: 'tests', run: scenarioTests },
+            { title: 'db', run: scenarioDb },
+            { title: 'logs', run: scenarioLogs },
+            { title: 'disk', run: scenarioDisk },
         ];
 
-        const outputLines = [
-            { text: '', delay: 200 },
-            { text: 'PASS  src/auth.test.ts', color: 'text-shell-green', delay: 100 },
-            { text: 'PASS  src/api.test.ts', color: 'text-shell-green', delay: 80 },
-            { text: 'PASS  src/db.test.ts', color: 'text-shell-green', delay: 80 },
-            { text: '', delay: 100 },
-            { text: 'Test Suites:  3 passed, 3 total', color: 'text-shell-green', delay: 60 },
-            { text: 'Tests:        14 passed, 14 total', color: 'text-white', delay: 60 },
-            { text: 'Time:         2.847s', color: 'text-shell-muted', delay: 60 },
-            { text: '', delay: 300 },
-            { text: '', delay: 0, isPrompt: true },
-        ];
+        // ── Playback: each scenario plays once, then it's frozen ────────────
+        // Returning to a finished tab shows its final result instantly (no replay).
+        const played = new Set();
+        let autoplaying = false;
+        let started = false;
+        let pauseTimer = null;
+        let pauseResolve = null;
 
-        const terminal = document.getElementById('terminal');
-        const typedCmd = document.getElementById('typed-cmd');
-        const cursor = terminal.querySelector('.cursor-blink');
-        let currentCommand = 'npm test';
-        let charIndex = 0;
+        function wake() {
+            if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; }
+            if (pauseResolve) { const r = pauseResolve; pauseResolve = null; r(); }
+        }
 
-        function typeCommand() {
-            if (charIndex < currentCommand.length) {
-                typedCmd.textContent += currentCommand[charIndex];
-                charIndex++;
-                setTimeout(typeCommand, 40 + Math.random() * 60);
-            } else {
-                // Command typed, now "execute" it
-                setTimeout(showOutput, 500);
+        async function runScenario(i) {
+            ++tok; // abort anything currently running
+            activate(i);
+            resetTab(i);
+            try {
+                await scenarios[i].run(tabs[i]);
+                played.add(i); // completed -> frozen, never replayed
+                enablePrompt(i); // hand the pane over: now you can type
+            } catch (e) {
+                if (e !== 'ABORT') console.error(e); // interrupted -> still replayable
             }
         }
 
-        function showOutput() {
-            // Remove cursor from first line
-            cursor.remove();
-
-            let lineIndex = 0;
-
-            function addLine() {
-                if (lineIndex >= outputLines.length) {
-                    return;
+        // Autoplay each scenario once, in order, then rest on the last result.
+        async function autoplay() {
+            autoplaying = true;
+            for (let i = 0; i < scenarios.length; i++) {
+                if (!autoplaying) return;
+                if (played.has(i)) { activate(i); continue; }
+                await runScenario(i);
+                if (!autoplaying || !played.has(i)) return; // a click took over
+                if (i < scenarios.length - 1) {
+                    await new Promise((res) => {
+                        pauseResolve = res;
+                        pauseTimer = setTimeout(() => { pauseTimer = null; pauseResolve = null; res(); }, 1800);
+                    });
+                    if (!autoplaying) return;
                 }
-
-                const line = outputLines[lineIndex];
-
-                if (line.isPrompt) {
-                    const promptLine = document.createElement('div');
-                    promptLine.innerHTML = '<span class="text-shell-green">claude</span><span class="text-shell-muted">@dev</span> <span class="text-shell-accent">~/project</span> <span class="text-shell-muted">$</span> <span class="cursor-blink text-shell-accent">|</span>';
-                    terminal.appendChild(promptLine);
-                    return;
-                }
-
-                const div = document.createElement('div');
-                div.className = line.color || 'text-shell-muted';
-                div.textContent = line.text;
-                if (!line.text) div.innerHTML = '&nbsp;';
-                terminal.appendChild(div);
-
-                lineIndex++;
-                setTimeout(addLine, line.delay);
             }
-
-            addLine();
+            autoplaying = false; // all played
         }
 
-        // Start typing after page loads
-        setTimeout(typeCommand, 800);
+        // Tab click: show a finished scenario instantly, or play a new one.
+        function pick(i) {
+            hideHint();
+            autoplaying = false; // you're driving now
+            wake();
+            if (played.has(i)) { ++tok; activate(i); } // already done -> just show it
+            else { runScenario(i); }
+        }
+
+        function start() { if (started) return; started = true; autoplay(); }
+
+        // ── Window controls — the traffic lights actually work ──────────────
+        const closeBtn = term.querySelector('.tl-close');
+        const minBtn = term.querySelector('.tl-min');
+        const maxBtn = term.querySelector('.tl-max');
+        const titleBar = document.getElementById('titlebar');
+        let minimized = false;
+        let maximized = false;
+        let closedEl = null;
+
+        const termWrap = term.parentElement;
+
+        function reopen() {
+            if (closedEl) { closedEl.remove(); closedEl = null; }
+            term.style.display = '';
+            played.clear();
+            minimized = false;
+            maximized = false;
+            tabbody.style.height = '';
+            tabbar.style.display = '';
+            tabbody.style.display = '';
+            started = false;
+            buildTabs();
+            start();
+        }
+
+        closeBtn.addEventListener('click', () => {
+            if (closedEl) return;
+            autoplaying = false;
+            started = true;
+            ++tok;
+            wake();
+            tabs.forEach((t) => t.body.querySelectorAll('.pane').forEach((p) => { if (p.__sh && p.__sh.timer) clearInterval(p.__sh.timer); }));
+            activePane = null;
+            // Replace the whole terminal with a closed-state placeholder.
+            term.style.display = 'none';
+            closedEl = document.createElement('div');
+            closedEl.className = 'terminal-glow rounded-xl bg-[#0d1117] border border-shell-border flex flex-col items-center justify-center gap-4 h-[300px] text-center px-6';
+            closedEl.innerHTML =
+                '<div class="text-shell-muted text-sm font-mono">Terminal closed.</div>' +
+                '<button class="px-4 py-2 rounded-lg bg-shell-accent text-shell-bg text-sm font-semibold hover:bg-sky-400 transition-colors">Open again?</button>';
+            termWrap.appendChild(closedEl);
+            closedEl.querySelector('button').addEventListener('click', reopen);
+        });
+
+        minBtn.addEventListener('click', () => {
+            if (closedEl) return;
+            minimized = !minimized;
+            tabbody.style.transition = 'height .3s ease';
+            tabbody.style.overflow = 'hidden';
+            tabbar.style.display = minimized ? 'none' : '';
+            tabbody.style.height = minimized ? '0px' : (maximized ? '640px' : '440px');
+        });
+
+        maxBtn.addEventListener('click', () => {
+            if (closedEl || minimized) return;
+            maximized = !maximized;
+            tabbody.style.transition = 'height .3s ease';
+            tabbody.style.height = maximized ? '640px' : '440px';
+        });
+
+        if (titleBar) titleBar.addEventListener('dblclick', () => { if (!closedEl && !minimized) maxBtn.click(); });
+
+        // ── Interactive shell: click the terminal and type real-ish commands ──
+        // A hidden input captures keystrokes; the active tab's pane shows a live
+        // prompt and a small built-in shell answers a curated command set.
+        const ghost = document.createElement('input');
+        ghost.setAttribute('autocomplete', 'off');
+        ghost.setAttribute('autocapitalize', 'off');
+        ghost.setAttribute('autocorrect', 'off');
+        ghost.setAttribute('spellcheck', 'false');
+        ghost.setAttribute('aria-hidden', 'true');
+        ghost.tabIndex = -1;
+        ghost.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;';
+        document.body.appendChild(ghost);
+
+        let shellCwd = '~';
+        const cmdHistory = [];
+        let histIdx = 0;
+        let activePane = null; // the pane (left / right / a cluster cell) receiving keystrokes
+        let termFocused = false;
+
+        function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+        // ── A small fake filesystem so cd / ls / cat / mkdir / touch feel real ──
+        const FS = {
+            '~': { dirs: ['Projects', 'Downloads'], files: { 'README.md': 'sideshell — let any MCP client run commands in a visible terminal you control.\nDocs & install: https://sideshell.dev', 'notes.txt': '- ship v1.0.0\n- write the launch post\n- touch grass' } },
+            '~/Projects': { dirs: ['sideshell'], files: {} },
+            '~/Projects/sideshell': { dirs: ['site', 'sideshell_mcp', 'extensions'], files: { 'README.md': '# sideshell\nAI sidecar terminal — let any MCP client run commands in a visible terminal.', 'pyproject.toml': '[project]\nname = "sideshell-mcp"\nversion = "1.0.0"' } },
+            '~/Downloads': { dirs: [], files: { 'invoice.pdf': '%PDF-1.7 …binary…' } },
+        };
+        function node(p) { return FS[p] || null; }
+        function cwdEntries() { const n = node(shellCwd) || { dirs: [], files: {} }; return n.dirs.map((d) => d + '/').concat(Object.keys(n.files)); }
+        function resolvePath(arg) {
+            if (!arg || arg === '~' || arg === '/') return '~';
+            if (arg === '..') return shellCwd === '~' ? '~' : (shellCwd.split('/').slice(0, -1).join('/') || '~');
+            return (shellCwd === '~' ? '~/' : shellCwd + '/') + arg.replace(/\/$/, '');
+        }
+        function gitBranch() { return shellCwd.indexOf('~/Projects/sideshell') === 0 ? 'main' : null; }
+
+        function shellPrompt() {
+            const br = gitBranch();
+            return '<span class="text-shell-green">you</span><span class="text-shell-muted">@mac</span> ' +
+                '<span class="text-shell-accent">' + shellCwd + '</span> ' +
+                (br ? '<span class="text-shell-amber">git:(' + br + ')</span> ' : '') +
+                '<span class="text-shell-muted">$</span> ';
+        }
+
+        function caretSpan(ch, solid) {
+            return '<span class="' + (solid ? 'caret' : 'caret-hollow') + '">' + (ch ? esc(ch) : ' ') + '</span>';
+        }
+        // Render the ACTIVE pane's line from the hidden input (value + caret),
+        // so mid-line edits and Left/Right/Home/End all show correctly.
+        function renderActive() {
+            const sh = activePane && activePane.__sh;
+            if (!sh || sh.running) return;
+            const v = ghost.value;
+            let c = ghost.selectionStart;
+            if (c == null) c = v.length;
+            sh.pending = v;
+            sh.el.innerHTML = sh.prompt +
+                '<span class="text-white">' + esc(v.slice(0, c)) + '</span>' +
+                caretSpan(v.charAt(c), termFocused) +
+                '<span class="text-white">' + esc(v.slice(c + 1)) + '</span>';
+            scrollPane(activePane);
+        }
+        // Render an unfocused pane's prompt (its saved text + a hollow caret).
+        function renderStatic(pane) {
+            const sh = pane && pane.__sh;
+            if (!sh || sh.running) return;
+            sh.el.innerHTML = sh.prompt + '<span class="text-white">' + esc(sh.pending || '') + '</span>' + caretSpan('', false);
+        }
+        const syncLine = renderActive;
+
+        function enablePromptInPane(pane) {
+            if (!pane || pane.__sh) return;
+            const el = line(pane, '');
+            pane.__sh = { el, prompt: shellPrompt(), pending: '', running: false, timer: null, cursor: null, stopped: null };
+            renderStatic(pane);
+            scrollPane(pane);
+        }
+
+        // On scenario completion: EVERY pane of the tab becomes typeable
+        // (left + right for splits; all four for the cluster grid). Panes that
+        // are still "running" a process keep streaming and are skipped.
+        function enablePrompt(i) {
+            const t = tabs[i];
+            if (!t) return;
+            const panes = [...t.body.querySelectorAll('.pane')];
+            panes.forEach(enablePromptInPane); // skips running panes
+            const typeable = panes.filter((p) => p.__sh && !p.__sh.running);
+            if (typeable.length) { activePane = typeable[typeable.length - 1]; ghost.value = ''; renderActive(); }
+        }
+
+        // Start a real, stoppable process in a pane mid-scenario (so the demo's
+        // `npm run dev` / `tail -f` / `top` actually hang until you Ctrl+C them).
+        function beginProcess(pane, lr) {
+            if (!pane) return;
+            if (!pane.__sh) pane.__sh = { el: null, prompt: shellPrompt(), pending: '', running: false, timer: null, cursor: null, stopped: null };
+            startProcess(pane, lr);
+        }
+
+        // Long-running ("hanging") commands — they hold the prompt until Ctrl+C.
+        function longRunning(cmd) {
+            const c = cmd.toLowerCase();
+            if (['npm run dev', 'npm start', 'npm run', 'yarn dev', 'pnpm dev', 'vite'].includes(c)) {
+                let n = 0;
+                const lg = ['<span class="text-shell-muted">[hmr] page reload src/App.tsx</span>', '<span class="text-shell-muted">GET / 200 · 3 ms</span>', '<span class="text-shell-muted">GET /api/health 200 · 1 ms</span>'];
+                return {
+                    boot: [
+                        '<span class="text-shell-muted">  VITE</span> <span class="text-shell-green">v5.4.2</span>  <span class="text-shell-muted">ready in 412 ms</span>', '',
+                        '  <span class="text-shell-green">➜</span>  <span class="text-white">Local:</span>   <span class="text-shell-accent">http://localhost:5173/</span>',
+                        '  <span class="text-shell-muted">➜  press Ctrl+C to stop</span>',
+                    ], every: 2000, tick: () => lg[(n++) % lg.length], stopped: '<span class="text-shell-muted">server stopped.</span>',
+                };
+            }
+            if (c.indexOf('tail -f') === 0) {
+                let n = 0;
+                return { boot: ['<span class="text-shell-muted">[info] worker online · polling jobs</span>'], every: 1300, stopped: null,
+                    tick: () => { const t = ['<span class="text-shell-muted">[info] job ' + (8471 + n) + ' done in ' + (120 + (n * 37) % 900) + ' ms</span>', '<span class="text-shell-amber">[warn] retry job ' + (8471 + n) + ' (attempt 2)</span>']; n++; return t[n % t.length]; } };
+            }
+            if (c.indexOf('ping ') === 0) {
+                const host = cmd.split(/\s+/)[1] || 'host'; let n = 0;
+                return { boot: ['PING ' + esc(host) + ': 56 data bytes'], every: 1000, stopped: null,
+                    tick: () => '64 bytes from ' + esc(host) + ': icmp_seq=' + (n++) + ' time=' + (10 + (n * 7) % 40) + ' ms' };
+            }
+            if (c === 'top' || c === 'htop') {
+                return { boot: [
+                    '<span class="text-shell-muted">PID   %CPU  MEM    COMMAND</span>',
+                    '712   1.2   42MB   sideshell-mcp', '981   0.4   18MB   node',
+                    '<span class="text-shell-muted">(live — press Ctrl+C to exit)</span>',
+                ], every: 0, tick: null, stopped: null };
+            }
+            return null;
+        }
+
+        function startProcess(pane, lr) {
+            const sh = pane.__sh;
+            sh.running = true;
+            sh.stopped = lr.stopped;
+            for (const l of lr.boot) line(pane, l);
+            sh.cursor = line(pane, '<span class="cursor-blink text-shell-accent">▋</span>');
+            scrollPane(pane);
+            if (lr.tick && lr.every) {
+                sh.timer = setInterval(() => {
+                    if (!sh.running) return;
+                    sh.cursor.remove();
+                    line(pane, lr.tick());
+                    pane.appendChild(sh.cursor);
+                    scrollPane(pane);
+                }, lr.every);
+            }
+        }
+
+        function stopProcess(pane) {
+            const sh = pane && pane.__sh;
+            if (!sh || !sh.running) return;
+            if (sh.timer) { clearInterval(sh.timer); sh.timer = null; }
+            sh.running = false;
+            if (sh.cursor) { sh.cursor.remove(); sh.cursor = null; }
+            line(pane, '<span class="text-shell-muted">^C</span>');
+            if (sh.stopped) line(pane, sh.stopped);
+            pane.__sh = null;
+            enablePromptInPane(pane);
+            activePane = pane;
+            ghost.value = '';
+            ghost.focus({ preventScroll: true });
+            renderActive();
+        }
+
+        function runShell(raw) {
+            const cmd = raw.trim();
+            if (!cmd) return [];
+            const parts = cmd.split(/\s+/);
+            const c = parts[0];
+            const args = parts.slice(1);
+            // "Heavy" commands take a beat (spinner) before printing — feels real.
+            if (c === 'npm' && (args[0] === 'install' || args[0] === 'i')) return { defer: 'installing packages', delay: 1900, lines: ['<span class="text-shell-muted">added 312 packages in 4s</span>', '<span class="text-shell-green">✓ done</span>'] };
+            if (c === 'pip' && args[0] === 'install') return { defer: 'collecting ' + esc(args[1] || 'package'), delay: 1500, lines: ['<span class="text-shell-muted">Successfully installed ' + esc(args[1] || 'package') + '-1.0.0</span>'] };
+            if (c === 'git' && args[0] === 'pull') return { defer: 'pulling from origin', delay: 1300, lines: ['<span class="text-shell-muted">Updating ee8bed8..d3d9646</span>', 'Fast-forward · 3 files changed, 42 insertions(+)'] };
+            if (c === 'git' && args[0] === 'clone') return { defer: 'cloning ' + esc(args[1] || 'repo'), delay: 2000, lines: ['<span class="text-shell-muted">remote: Enumerating objects: 1284, done.</span>', '<span class="text-shell-green">✓ cloned</span>'] };
+            if (c === 'docker' && (args[0] === 'pull' || args[0] === 'build')) return { defer: 'docker ' + args[0], delay: 2200, lines: ['<span class="text-shell-muted">Status: Downloaded newer image</span>', '<span class="text-shell-green">✓ done</span>'] };
+            if (c === 'make' || c === 'cargo' || (c === 'brew' && args[0] === 'install')) return { defer: 'building', delay: 1800, lines: ['<span class="text-shell-green">✓ built in 1.8s</span>'] };
+
+            switch (c) {
+                case 'help': return ['<span class="text-shell-muted">try:</span> ls, cd, cat, mkdir, touch, rm, pwd, echo, whoami, date, uname, df, free, docker, git, npm, pip, python3, node, top, tail, ping, sideshell, clear'];
+                case 'ls': {
+                    const ents = cwdEntries();
+                    if (!ents.length) return [''];
+                    return [ents.map((e) => e.endsWith('/') ? '<span class="text-shell-accent">' + esc(e) + '</span>' : esc(e)).join('  ')];
+                }
+                case 'pwd': return [shellCwd.replace('~', '/Users/you')];
+                case 'whoami': return ['you'];
+                case 'date': return [new Date().toString()];
+                case 'uname': return [args.includes('-a') ? 'Darwin mac.local 24.0.0 arm64' : 'Darwin'];
+                case 'echo': return [esc(args.join(' '))];
+                case 'cd': {
+                    const p = resolvePath(args[0]);
+                    if (node(p)) { shellCwd = p; return []; }
+                    return ['cd: no such file or directory: ' + esc(args[0] || '')];
+                }
+                case 'cat': {
+                    const n = node(shellCwd) || { files: {} };
+                    const f = args[0] || '';
+                    if (n.files[f] != null) return esc(n.files[f]).split('\n');
+                    return ['cat: ' + esc(f) + ': No such file or directory'];
+                }
+                case 'mkdir': { const n = node(shellCwd); const d = (args[0] || '').replace(/\/$/, ''); if (n && d && !n.dirs.includes(d)) { n.dirs.push(d); FS[resolvePath(d)] = { dirs: [], files: {} }; } return []; }
+                case 'touch': { const n = node(shellCwd); const f = args[0]; if (n && f && n.files[f] == null) n.files[f] = ''; return []; }
+                case 'rm': { const n = node(shellCwd); const f = args[args.length - 1]; if (n) { delete n.files[f]; n.dirs = n.dirs.filter((d) => d !== (f || '').replace(/\/$/, '')); } return []; }
+                case 'df': return ['<span class="text-shell-muted">Filesystem      Size  Used Avail Cap</span>', '/dev/disk3s1   460G  416G   44G  91%'];
+                case 'free': return ['<span class="text-shell-muted">         total   used   free</span>', 'Mem:       16Gi   9Gi    7Gi'];
+                case 'python3': case 'python': return ['Python 3.13.1'];
+                case 'node': return ['v22.3.0'];
+                case 'docker':
+                    if (args[0] === 'ps') return ['<span class="text-shell-muted">CONTAINER  IMAGE        STATUS</span>', 'a1b2c3d4   api:latest   Up 2 hours', 'e5f6a7b8   postgres:16  Up 2 hours'];
+                    if (args[0] === 'images') return ['<span class="text-shell-muted">REPOSITORY  TAG     SIZE</span>', 'api         latest  142MB', 'postgres    16      431MB'];
+                    return ['docker: \'' + esc(args[0] || '') + '\' is not a docker command. Try: docker ps'];
+                case 'git':
+                    if (args[0] === 'status') return ['On branch <span class="text-shell-accent">main</span>', 'nothing to commit, working tree clean'];
+                    if (args[0] === 'log') return ['<span class="text-shell-amber">ee8bed8</span> docs: add Pi to the MCP client examples', '<span class="text-shell-amber">341a1bb</span> docs(site): add llms.txt'];
+                    return ['git: try `git status`, `git log`, `git pull`'];
+                case 'sideshell': return [
+                    '<span class="text-shell-green">sideshell</span> — AI sidecar terminal. This little shell is just the website demo;',
+                    'the real thing lets an MCP client run commands in a terminal you watch.',
+                    'Install: <span class="text-shell-accent">uvx sideshell-mcp</span> · docs: https://sideshell.dev',
+                ];
+                case 'clear': return null;
+                default: return ['<span class="text-shell-muted">zsh: command not found: ' + esc(c) + '</span>'];
+            }
+        }
+
+        // Spinner for "heavy" deferred commands, then print the result + new prompt.
+        function runDeferred(pane, d) {
+            const sh = pane.__sh;
+            const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+            let i = 0;
+            const spin = line(pane, '<span class="text-shell-accent">' + frames[0] + '</span> <span class="text-shell-muted">' + d.defer + '…</span>');
+            pane.__sh = null; // no input while it "works"
+            const timer = setInterval(() => {
+                i++;
+                spin.innerHTML = '<span class="text-shell-accent">' + frames[i % frames.length] + '</span> <span class="text-shell-muted">' + d.defer + '…</span>';
+                scrollPane(pane);
+            }, 90);
+            setTimeout(() => {
+                clearInterval(timer);
+                spin.remove();
+                for (const l of d.lines) line(pane, l);
+                enablePromptInPane(pane);
+                if (activePane === pane || !activePane) { activePane = pane; ghost.value = ''; renderActive(); }
+            }, d.delay);
+        }
+
+        function submit() {
+            const pane = activePane;
+            const sh = pane && pane.__sh;
+            if (!sh) return;
+            const raw = ghost.value;
+            // freeze the command line (prompt + what was typed, no caret)
+            sh.el.innerHTML = sh.prompt + '<span class="text-white">' + esc(raw) + '</span>';
+            if (raw.trim()) cmdHistory.push(raw);
+            histIdx = cmdHistory.length;
+            ghost.value = '';
+            sh.pending = '';
+            const lr = longRunning(raw.trim());
+            if (lr) { startProcess(pane, lr); return; } // hangs until Ctrl+C — no new prompt
+            const out = runShell(raw);
+            if (out && out.defer) { runDeferred(pane, out); return; } // heavy cmd — spinner then result
+            pane.__sh = null;
+            if (out === null) { pane.innerHTML = ''; } // clear
+            else { for (const l of out) line(pane, l); }
+            enablePromptInPane(pane);
+            activePane = pane;
+            ghost.value = '';
+            ghost.focus({ preventScroll: true });
+            renderActive();
+        }
+
+        // Focus is non-disruptive: clicking never stops the demo. The prompt
+        // appears when a scenario finishes; the demo only yields once you type.
+        // Clicking a specific pane (left / right / a cluster cell) focuses it.
+        function focusPane(pane) {
+            if (pane && pane.__sh) {
+                if (activePane && activePane !== pane) renderStatic(activePane);
+                activePane = pane; // running panes become active too, so Ctrl+C can stop them
+                if (pane.__sh.running) {
+                    ghost.value = ''; // process owns the line — no editable text
+                } else {
+                    ghost.value = pane.__sh.pending || '';
+                    const n = ghost.value.length;
+                    try { ghost.setSelectionRange(n, n); } catch (er) { /* offscreen input */ }
+                }
+            }
+            ghost.focus({ preventScroll: true });
+            renderActive();
+        }
+
+        const COMMANDS = ['help', 'ls', 'pwd', 'cat', 'echo', 'cd', 'mkdir', 'touch', 'rm', 'whoami', 'date', 'uname', 'df', 'free', 'docker', 'git', 'npm', 'pip', 'python3', 'node', 'top', 'tail', 'ping', 'sideshell', 'clear'];
+        const ARGS = { docker: ['ps', 'images', 'pull', 'build'], git: ['status', 'log', 'pull', 'clone'], npm: ['install', 'run', 'start'], pip: ['install'], tail: ['-f'] };
+        const FILE_CMDS = ['cat', 'cd', 'ls', 'rm', 'mkdir', 'touch', 'less', 'head', 'tail'];
+
+        function applyComplete(value, replacement) {
+            if (value === '' || /\s$/.test(value)) return value + replacement;
+            return value.replace(/(\S*)$/, replacement);
+        }
+        function tabComplete() {
+            const sh = activePane && activePane.__sh;
+            if (!sh) return;
+            const value = ghost.value;
+            const toks = value.trim().split(/\s+/).filter(Boolean);
+            const endsSpace = /\s$/.test(value);
+            let word, pool;
+            if (toks.length <= 1 && !endsSpace) { word = toks[0] || ''; pool = COMMANDS; }
+            else {
+                word = endsSpace ? '' : toks[toks.length - 1];
+                pool = (ARGS[toks[0]] || []).concat(FILE_CMDS.includes(toks[0]) ? cwdEntries() : []);
+            }
+            const matches = pool.filter((p) => p.toLowerCase().startsWith(word.toLowerCase()));
+            if (matches.length === 0) return;
+            const setVal = (v) => { ghost.value = v; const n = v.length; try { ghost.setSelectionRange(n, n); } catch (er) { /* */ } renderActive(); };
+            if (matches.length === 1) {
+                let v = applyComplete(value, matches[0]);
+                if (!/\/$/.test(matches[0])) v += ' ';
+                setVal(v); return;
+            }
+            let cp = matches[0];
+            for (const m of matches) { while (cp && !m.toLowerCase().startsWith(cp.toLowerCase())) cp = cp.slice(0, -1); }
+            if (cp.length > word.length) { setVal(applyComplete(value, cp)); return; }
+            // already at the common prefix → list candidates (bash-style), keep typing below
+            renderStatic(activePane);
+            line(activePane, '<span class="text-shell-muted">' + matches.map(esc).join('   ') + '</span>');
+            sh.el = line(activePane, '');
+            renderActive();
+        }
+
+        ghost.addEventListener('input', () => {
+            if (!(activePane && activePane.__sh)) { ghost.value = ''; return; } // no live prompt focused yet
+            renderActive();
+        });
+        ghost.addEventListener('keyup', () => { renderActive(); }); // reflect caret moves (←/→/Home/End)
+        ghost.addEventListener('focus', () => { termFocused = true; renderActive(); });
+        ghost.addEventListener('blur', () => { termFocused = false; renderActive(); });
+        // Stop the auto-walkthrough and drop the active tab into a typeable prompt.
+        function stopDemo() {
+            autoplaying = false;
+            tok++; // abort the animating scenario
+            wake();
+            const t = tabs[activeIndex];
+            if (t) {
+                const panes = [...t.body.querySelectorAll('.pane')];
+                panes.forEach(enablePromptInPane);
+                const typeable = panes.filter((p) => p.__sh && !p.__sh.running);
+                if (typeable.length && (!activePane || !t.body.contains(activePane))) activePane = typeable[typeable.length - 1];
+            }
+            ghost.value = (activePane && activePane.__sh && activePane.__sh.pending) || '';
+            ghost.focus({ preventScroll: true });
+            renderActive();
+        }
+
+        ghost.addEventListener('keydown', (e) => {
+            const ctrlC = (e.key === 'c' || e.key === 'C') && (e.ctrlKey || e.metaKey);
+            const sh = activePane && activePane.__sh;
+            // Ctrl+C: stop the auto-demo, stop the focused process, or cancel the line.
+            if (ctrlC) {
+                e.preventDefault();
+                if (sh && sh.running) { stopProcess(activePane); autoplaying = false; return; }
+                if (autoplaying || !sh) { stopDemo(); return; }
+                // idle prompt: cancel the current line
+                sh.el.innerHTML = sh.prompt + '<span class="text-white">' + esc(ghost.value) + '</span><span class="text-shell-muted">^C</span>';
+                ghost.value = ''; activePane.__sh = null; enablePromptInPane(activePane); renderActive();
+                return;
+            }
+            if (sh && sh.running) { e.preventDefault(); return; } // process holds the prompt (non-Ctrl+C ignored)
+            if (!sh) { if (e.key === 'Tab') e.preventDefault(); return; } // demo still running — let it finish
+            if (autoplaying) { autoplaying = false; wake(); } // first keystroke takes over
+            const setVal = (v, caret) => { ghost.value = v; const n = caret == null ? v.length : caret; try { ghost.setSelectionRange(n, n); } catch (er) { /* */ } renderActive(); };
+            if (e.ctrlKey || e.metaKey) {
+                const k = e.key.toLowerCase();
+                if (k === 'a') { e.preventDefault(); setVal(ghost.value, 0); return; }                    // start of line
+                if (k === 'e') { e.preventDefault(); setVal(ghost.value, ghost.value.length); return; }   // end of line
+                if (k === 'u') { e.preventDefault(); setVal(ghost.value.slice(ghost.selectionStart || 0), 0); return; } // kill to start
+                if (k === 'k') { e.preventDefault(); const c = ghost.selectionStart || 0; setVal(ghost.value.slice(0, c), c); return; } // kill to end
+                if (k === 'w') { e.preventDefault(); const c = ghost.selectionStart || 0; const left = ghost.value.slice(0, c).replace(/\s*\S+\s*$/, ''); setVal(left + ghost.value.slice(c), left.length); return; } // kill word
+                if (k === 'l') { e.preventDefault(); activePane.innerHTML = ''; activePane.__sh = null; enablePromptInPane(activePane); ghost.value = ''; renderActive(); return; } // clear screen
+            }
+            if (e.key === 'Enter') { e.preventDefault(); submit(); }
+            else if (e.key === 'Tab') { e.preventDefault(); tabComplete(); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); if (histIdx > 0) { histIdx--; setVal(cmdHistory[histIdx] || ''); } }
+            else if (e.key === 'ArrowDown') { e.preventDefault(); if (histIdx < cmdHistory.length) { histIdx++; setVal(cmdHistory[histIdx] || ''); } }
+            // ←/→/Home/End fall through to the input; keyup re-renders the caret
+        });
+        tabbody.addEventListener('mousedown', (e) => {
+            if (e.target && e.target.classList && e.target.classList.contains('cursor-col-resize')) return; // let the resizer drag
+            const pane = e.target.closest ? e.target.closest('.pane') : null;
+            setTimeout(() => focusPane(pane), 0);
+        });
+        // While the demo auto-plays, Ctrl+C anywhere stops it — even before you click in.
+        // Real Ctrl only (Cmd+C copy untouched) and never when text is selected.
+        document.addEventListener('keydown', (e) => {
+            if (!autoplaying) return;
+            if ((e.key !== 'c' && e.key !== 'C') || !e.ctrlKey) return;
+            if (window.getSelection && String(window.getSelection())) return; // let a real copy through
+            const r = term.getBoundingClientRect();
+            const vh = window.innerHeight || document.documentElement.clientHeight;
+            if (r.bottom <= 0 || r.top >= vh) return; // terminal off-screen
+            e.preventDefault();
+            stopDemo();
+        });
+
+        // Tabs render immediately; autoplay begins once the hero is on screen.
+        buildTabs();
+        const _termObserver = new IntersectionObserver((entries, obs) => {
+            if (entries.some((e) => e.isIntersecting)) { obs.disconnect(); start(); }
+        }, { threshold: 0.2 });
+        _termObserver.observe(term);
 
         // Copy to clipboard
         function copyToClipboard(text, btn) {

@@ -66,6 +66,6 @@ Special keys in `base.py`:
 - tmux, kitty, wezterm backends use subprocess calls (stdlib only)
 - Ghostty backend wraps TmuxBackend (Ghostty has no terminal API on macOS)
 - maquake backend uses Unix domain socket at `/tmp/maquake.sock` (JSON request/response)
-- iTerm2 backend requires `iterm2` package (`pip install sideshell-mcp[iterm2]`)
+- iTerm2 backend requires `iterm2` package (`pip install 'sideshell-mcp[iterm2]'` — quote brackets in zsh)
 - IDE backends use Unix sockets at `~/.sideshell/<ide>.sock` (stdlib, no extra packages)
 - All backends support wait/timeout for command completion

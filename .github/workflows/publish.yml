@@ -1,0 +1,55 @@
+name: Publish to PyPI
+
+# Publishes sideshell-mcp to PyPI via Trusted Publishing (OIDC) — no API token
+# is stored anywhere. Fires when a GitHub Release is published, or manually.
+#
+# One-time setup on PyPI (Account → Publishing → Add a pending publisher):
+#   PyPI project name: sideshell-mcp
+#   Owner:             menemy
+#   Repository:        sideshell
+#   Workflow name:     publish.yml
+#   Environment:       pypi
+# Then create a GitHub Release (tag vX.Y.Z) and this workflow does the rest.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build sdist + wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+      - name: Check artifacts
+        run: |
+          python -m pip install --upgrade twine
+          twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # required for Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

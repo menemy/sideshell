@@ -21,19 +21,23 @@ from .ide_bridge import DEFAULT_VSCODE_PORT, IDEBridgeClient, IDEBridgeError
 logger = logging.getLogger(__name__)
 
 INSTALL_INSTRUCTIONS = """
-sideshell VSCode extension is not running.
+The sideshell VS Code / Cursor extension isn't running, so this backend can't connect.
 
-To install:
-  1. Install from VS Code Marketplace:
-     code --install-extension sideshell.sideshell-terminal
+Note: only the VS Code and JetBrains backends need an extension. If you just need
+a visible terminal, switch to a backend that needs none -- tmux, iTerm2, Ghostty,
+WezTerm, Kitty, or maquake -- e.g. start the server with --backend tmux.
 
-  2. Or install from .vsix file:
-     code --install-extension sideshell-terminal-0.1.0.vsix
+To use the VS Code/Cursor backend, install the extension:
+  - VS Code Marketplace (once published):
+      code --install-extension sideshell.sideshell-terminal
+  - Cursor / VSCodium: install from Open VSX, or side-load the .vsix below.
+  - Side-load now: download sideshell-vscode-<version>.vsix from
+      https://github.com/menemy/sideshell/releases
+    then:  code --install-extension sideshell-vscode-<version>.vsix
+      (Cursor: cursor --install-extension sideshell-vscode-<version>.vsix)
 
-  3. Restart VS Code or reload the window (Cmd+Shift+P -> "Reload Window")
-
-The extension starts automatically and listens on a Unix socket at
-~/.sideshell/vscode.sock.
+Then reload the window (Cmd/Ctrl+Shift+P -> "Reload Window"). The extension
+auto-starts and listens on a Unix socket at ~/.sideshell/vscode.sock.
 """.strip()
 
 
@@ -68,7 +72,7 @@ class VSCodeBackend(TerminalBackend):
         try:
             await self._bridge.ensure_connection()
         except IDEBridgeError:
-            raise IDEBridgeError(INSTALL_INSTRUCTIONS.format(port=self._bridge.default_port)) from None
+            raise IDEBridgeError(INSTALL_INSTRUCTIONS) from None
 
     async def disconnect(self) -> None:
         await self._bridge.disconnect()

@@ -21,7 +21,25 @@ Share the artifacts directly (GitHub Releases, internal Slack, etc.).
 
 ## 1. PyPI (Python MCP Server)
 
-### Setup (one-time)
+### Recommended: Trusted Publishing (no tokens)
+
+The repo ships `.github/workflows/publish.yml`, which publishes via PyPI
+Trusted Publishing (OIDC) — nothing secret is stored. One-time setup:
+
+1. Create an account at https://pypi.org and **enable 2FA** (now mandatory).
+2. Go to **Account → Publishing → Add a pending publisher** and enter:
+   - PyPI project name: `sideshell-mcp`
+   - Owner: `menemy` · Repository: `sideshell`
+   - Workflow name: `publish.yml` · Environment: `pypi`
+3. (Optional) In the GitHub repo, create an Environment named `pypi`
+   (Settings → Environments) to gate releases.
+4. Cut a release: bump `version` in `pyproject.toml`, then publish a
+   **GitHub Release** (tag `vX.Y.Z`). The workflow builds, `twine check`s, and
+   uploads automatically.
+
+After that, `pip install sideshell-mcp` / `uvx sideshell-mcp` just work.
+
+### Alternative: API token (manual)
 
 ```bash
 pip install build twine

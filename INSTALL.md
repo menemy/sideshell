@@ -121,7 +121,7 @@ The Python MCP server auto-detects available backends. No extra setup needed for
 |---------|-------------|-------|
 | Ghostty | `brew install tmux` | Auto-creates `sideshell` tmux session. Watch: `tmux attach -t sideshell` |
 | tmux | `brew install tmux` | Auto-creates `sideshell` session if none exist |
-| iTerm2 | iTerm2 + `pip install sideshell-mcp[iterm2]` | Preferences → General → Magic → Enable Python API |
+| iTerm2 | iTerm2 + `pip install 'sideshell-mcp[iterm2]'` | Preferences → General → Magic → Enable Python API |
 | Kitty | `brew install --cask kitty` | Auto-detected if running |
 | WezTerm | `brew install --cask wezterm` | Auto-detected if running |
 | maquake | maquake running | Auto-detected via `/tmp/maquake.sock` |
@@ -131,7 +131,7 @@ The Python MCP server auto-detects available backends. No extra setup needed for
 ### Dependencies
 
 - **Base install** (`pip install sideshell-mcp`): only `mcp` package. Zero extra deps for tmux, Ghostty, Kitty, WezTerm, maquake, VSCode, IntelliJ.
-- **iTerm2**: `pip install sideshell-mcp[iterm2]` adds the `iterm2` package.
+- **iTerm2**: `pip install 'sideshell-mcp[iterm2]'` adds the `iterm2` package (quote the brackets in zsh).
 
 ---
 

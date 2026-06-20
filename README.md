@@ -1,6 +1,6 @@
 # sideshell
 
-**AI sidecar terminal** — let Claude/Cursor run commands in a visible, persistent terminal you control.
+**AI sidecar terminal** — let any MCP client (Claude Code, Cursor, Codex, OpenCode, Pi, …) run commands in a visible, persistent terminal you control.
 
 [![PyPI version](https://badge.fury.io/py/sideshell-mcp.svg)](https://badge.fury.io/py/sideshell-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)

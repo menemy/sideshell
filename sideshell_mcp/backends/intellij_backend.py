@@ -22,19 +22,20 @@ from .ide_bridge import DEFAULT_INTELLIJ_PORT, IDEBridgeClient, IDEBridgeError
 logger = logging.getLogger(__name__)
 
 INSTALL_INSTRUCTIONS = """
-sideshell IntelliJ plugin is not running.
+The sideshell JetBrains plugin isn't running, so this backend can't connect.
 
-To install:
-  1. Open your JetBrains IDE (IntelliJ IDEA, PyCharm, WebStorm, etc.)
-  2. Go to Settings -> Plugins -> Marketplace
-  3. Search for "sideshell" and install
-  4. Restart the IDE
+Note: only the JetBrains and VS Code backends need an extension. If you just need
+a visible terminal, switch to a backend that needs none -- tmux, iTerm2, Ghostty,
+WezTerm, Kitty, or maquake -- e.g. start the server with --backend tmux.
 
-  Or install manually:
-  - Download sideshell-terminal.zip
-  - Settings -> Plugins -> Install Plugin from Disk
+To use the JetBrains backend, install the plugin:
+  - JetBrains Marketplace (once published): Settings -> Plugins -> Marketplace ->
+    search "sideshell" -> Install.
+  - Install now from disk: download sideshell-intellij-<version>.zip from
+      https://github.com/menemy/sideshell/releases
+    then Settings -> Plugins -> (gear icon) -> "Install Plugin from Disk..." and pick it.
 
-The plugin starts automatically and listens on a Unix socket at
+Restart the IDE afterwards. The plugin auto-starts and listens on a Unix socket at
 ~/.sideshell/intellij.sock.
 Works with: IntelliJ IDEA, PyCharm, WebStorm, GoLand, RustRover, PhpStorm, Android Studio.
 """.strip()
@@ -77,7 +78,7 @@ class IntelliJBackend(TerminalBackend):
         try:
             await self._bridge.ensure_connection()
         except IDEBridgeError:
-            raise IDEBridgeError(INSTALL_INSTRUCTIONS.format(port=self._bridge.default_port)) from None
+            raise IDEBridgeError(INSTALL_INSTRUCTIONS) from None
 
     async def disconnect(self) -> None:
         await self._bridge.disconnect()
