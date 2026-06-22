@@ -54,6 +54,20 @@ export class SideshellBridge {
         this._token = crypto.randomBytes(32).toString('hex');
         this._approvalPending = false;
 
+        // Ensure ~/.sideshell exists BEFORE listen() — a Unix-domain socket
+        // can only bind inside an existing directory. On a fresh machine the
+        // directory is absent, so without this listen() fails with ENOENT/EACCES
+        // and the bridge never starts (writePortFile, which also creates it,
+        // only runs in the listen success callback — a chicken-and-egg).
+        try {
+            const dir = path.dirname(this.socketPath);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+            }
+        } catch (e) {
+            console.error('sideshell: failed to create socket dir:', e);
+        }
+
         // Clean up stale socket file
         try { fs.unlinkSync(this.socketPath); } catch { /* ok */ }
 
