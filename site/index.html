@@ -570,6 +570,17 @@
                     <span class="inline-block px-2 py-0.5 rounded text-xs bg-shell-green/10 text-shell-green border border-shell-green/20">Unix socket</span>
                 </div>
             </div>
+            <p class="text-xs text-shell-muted mt-8 max-w-3xl leading-relaxed">
+                <strong class="text-white">VS Code / Cursor note:</strong> opening, splitting and closing terminals,
+                sending keystrokes, and firing commands work out of the box. Waiting for a command to finish
+                (<code class="text-shell-accent/80 bg-shell-accent/5 px-1 py-0.5 rounded font-mono">execute</code> with
+                <code class="text-shell-accent/80 bg-shell-accent/5 px-1 py-0.5 rounded font-mono">wait</code>) and reading
+                terminal output rely on VS Code's
+                <a href="https://code.visualstudio.com/docs/terminal/shell-integration" class="text-shell-accent hover:underline">shell integration</a>,
+                which is on by default for bash, zsh, fish and PowerShell. With an unsupported shell or shell integration
+                disabled, commands are still sent — they just run without captured output. This is a VS Code platform
+                limitation; the terminal-emulator backends (tmux, Ghostty, WezTerm, Kitty, iTerm2) capture output directly.
+            </p>
         </div>
     </section>
 
