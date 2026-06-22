@@ -20,16 +20,19 @@ When AI assistants run shell commands, they execute in a hidden terminal:
 
 ## Supported Terminals
 
-| Terminal | Platform | Status |
-|----------|----------|--------|
-| **iTerm2** | macOS | ✅ Full support (native Python API) |
-| **tmux** | macOS, Linux, WSL | ✅ Full support |
-| **WezTerm** | macOS, Linux, Windows | ✅ Full support |
-| **Kitty** | macOS, Linux | ✅ Full support |
-| **Ghostty** | macOS | ✅ Full support (`ghostty_tmux` hybrid: native AppleScript splits + per-surface tmux engine, Ghostty 1.3+) |
-| **maquake** | macOS | ✅ Full support (drop-down terminal via Unix socket) |
-| **VS Code / Cursor** | macOS, Linux, Windows | ✅ Full support (via extension, Unix-socket bridge) |
-| **JetBrains IDEs** | macOS, Linux, Windows | ✅ Full support (via plugin, Unix-socket bridge) |
+**Verified on** lists the operating systems where the backend is exercised by a live
+end-to-end test pass. Other combinations may work but are not yet verified — see Notes.
+
+| Terminal | Verified on | Notes |
+|----------|-------------|-------|
+| **iTerm2** | macOS | Native Python API |
+| **tmux** | macOS, Linux | Also expected in WSL (tmux on `PATH`); not yet verified there |
+| **WezTerm** | macOS, Linux | Windows expected (`wezterm cli`); not yet verified |
+| **Kitty** | macOS, Linux | — |
+| **Ghostty** | macOS | `ghostty_tmux` hybrid: native AppleScript splits + per-surface tmux engine (Ghostty 1.3+) |
+| **maquake** | macOS | Drop-down terminal via Unix socket |
+| **VS Code / Cursor** | macOS, Linux | Extension + Unix-socket bridge. `execute(wait)`/output read use VS Code shell integration (on by default for bash/zsh/fish/pwsh). Windows uses a named-pipe bridge — code ready, e2e pending |
+| **JetBrains IDEs** | macOS, Linux | Plugin + Unix-socket bridge; verified on both terminal engines (Classic + Reworked). Windows named-pipe server pending |
 
 ## Features
 
