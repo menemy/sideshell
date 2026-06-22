@@ -389,10 +389,13 @@ class TestListing:
         async def fake_super(session_id=None):
             return SessionInfo(session_id="%5", name="zsh", path="/tmp", job="zsh", at_prompt=True)
 
+        backend._ghostty_terminals["sideshell_1_1"] = "TERMID"  # a live managed surface
         with patch.object(GhosttyTmuxBackend.__bases__[0], "get_session", side_effect=fake_super):
             info = await backend.get_session("sideshell_1_1")
-        assert info is not None
-        assert info.session_id == "sideshell_1_1"
+            assert info is not None
+            assert info.session_id == "sideshell_1_1"
+            # A closed/unknown id must NOT masquerade as alive via the tmux fallback.
+            assert await backend.get_session("sideshell_9_9") is None
 
 
 # =============================================================================

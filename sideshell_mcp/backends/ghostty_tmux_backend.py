@@ -400,6 +400,12 @@ end tell'''
 
     async def get_session(self, session_id: str | None = None) -> SessionInfo | None:
         """Get session info, preserving the sideshell session_id (tmux name)."""
+        # A specific id that isn't a live managed surface (e.g. it was closed) must
+        # return None — otherwise the tmux get_session fallback resolves to the
+        # active pane and we'd stamp the requested id on it, masquerading a dead
+        # session as alive.
+        if session_id is not None and session_id not in self._ghostty_terminals:
+            return None
         info = await super().get_session(session_id)
         if info and session_id:
             info.session_id = session_id
