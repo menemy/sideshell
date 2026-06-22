@@ -83,7 +83,7 @@ export class TerminalManager {
             }
 
             const buffer = this.outputBuffers.get(id) || [];
-            const lines = output.split('\n');
+            const lines = this.stripTerminalControl(output).split('\n');
             buffer.push(...lines);
 
             // Trim buffer to max size
@@ -146,6 +146,20 @@ export class TerminalManager {
     }
 
     /**
+     * Strip terminal control sequences from captured output so callers get
+     * plain text: OSC sequences (incl. shell-integration 133/633/697), CSI
+     * sequences (colors, cursor moves, bracketed-paste), and stray C0/C1
+     * control bytes. Tabs, newlines and carriage returns are preserved.
+     */
+    private stripTerminalControl(s: string): string {
+        return s
+            .replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, '')   // OSC ... BEL|ST
+            .replace(/\x1b[@-Z\\-_]/g, '')                    // C1 (two-byte ESC)
+            .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')        // CSI ... final byte
+            .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, ''); // stray control bytes
+    }
+
+    /**
      * Wait for VS Code shell integration to become available on a terminal.
      * Returns the TerminalShellIntegration, or undefined if it doesn't activate
      * within timeoutMs (e.g. unsupported shell, or a custom rc that doesn't
@@ -205,10 +219,11 @@ export class TerminalManager {
         await Promise.race([readPromise, new Promise((r) => setTimeout(r, 500))]);
         this.pendingExecutions.delete(execution);
 
-        // The raw stream includes VS Code's shell-integration OSC markers
-        // (633 / 133). Strip them so callers get clean command output.
-        output = output.replace(/\x1b\]6(?:33|97);[\s\S]*?(?:\x07|\x1b\\)/g, '')
-            .replace(/\x1b\]133;[\s\S]*?(?:\x07|\x1b\\)/g, '');
+        // The raw stream is exactly what's shown in the terminal — VT escape
+        // sequences and all (shell-integration OSC markers, colors from zsh
+        // syntax highlighting, cursor moves, bracketed-paste). Strip them so
+        // callers get clean command output.
+        output = this.stripTerminalControl(output);
 
         const lines = output.split('\n');
         const buffer = this.outputBuffers.get(id) || [];
