@@ -1,6 +1,7 @@
 """Pytest configuration, fixtures, and shared test utilities."""
 
 import asyncio
+import os
 from collections.abc import Generator
 
 # =============================================================================
@@ -37,6 +38,27 @@ class BaseTestSuite:
         else:
             self.failed += 1
             print(f"  ✗ {message}")
+
+    _sentinel_counter = 0
+
+    def _sentinel(self, prefix: str = "SS") -> str:
+        """A unique marker string for round-trip / real-effect assertions."""
+        BaseTestSuite._sentinel_counter += 1
+        return f"{prefix}_{os.getpid()}_{BaseTestSuite._sentinel_counter}"
+
+    async def _read_has(self, backend, session_id, needle: str, lines: int = 60, tries: int = 5) -> bool:
+        """Behavioral check: read the real terminal up to `tries` times and return
+        True once `needle` actually appears in the output (confirms the side
+        effect happened, not just that the call returned a string)."""
+        for _ in range(tries):
+            try:
+                out = await backend.read_terminal(lines=lines, session_id=session_id)
+            except Exception:
+                out = ""
+            if needle in (out or ""):
+                return True
+            await asyncio.sleep(0.4)
+        return False
 
     async def run_tests(self, tests: list):
         """Run a list of test methods with delays."""

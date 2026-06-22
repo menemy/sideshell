@@ -142,46 +142,67 @@ class TestTmuxBackend(BaseTestSuite):
         """Test executing command."""
         print("\n▶ test_execute_command")
         pane_id = self.created_panes[0]
+        marker = self._sentinel("EXEC")
         await self._delay()
-        result = await self.backend.execute_command("echo 'hello tmux'", pane_id)
+        await self.backend.execute_command(f"echo {marker}", pane_id)
         await self._delay()
-        self._assert("Sent" in result or "sent" in result.lower(), "Should confirm command sent")
+        self._assert(
+            await self._read_has(self.backend, pane_id, marker),
+            "echo output should actually appear in the terminal",
+        )
 
     async def test_execute_with_wait(self):
         """Test executing command with wait."""
         print("\n▶ test_execute_with_wait")
         pane_id = self.created_panes[0]
+        marker = self._sentinel("WAIT")
         await self._delay()
         result = await self.backend.execute_command(
-            "echo 'wait test'", pane_id, wait=True, timeout=10, watch_for="silence"
+            f"echo {marker}", pane_id, wait=True, timeout=10, watch_for="silence"
         )
-        self._assert("Completed" in result or "wait test" in result, "Should complete with output")
+        self._assert(marker in result, "wait=True must return captured output containing the marker")
 
     async def test_read_terminal(self):
         """Test reading terminal output."""
         print("\n▶ test_read_terminal")
         pane_id = self.created_panes[0]
+        marker = self._sentinel("READ")
         await self._delay()
-        await self.backend.execute_command("echo 'read test marker'", pane_id)
+        await self.backend.execute_command(f"echo {marker}", pane_id)
         await asyncio.sleep(0.5)
         result = await self.backend.read_terminal(lines=20, session_id=pane_id)
-        self._assert("read test marker" in result or "lines" in result.lower(), "Should read terminal content")
+        self._assert(marker in result, "read_terminal must return the actual echoed marker")
 
     async def test_send_text(self):
         """Test sending text."""
         print("\n▶ test_send_text")
         pane_id = self.created_panes[0]
+        marker = self._sentinel("TEXT")
         await self._delay()
-        result = await self.backend.send_text("test text", pane_id)
-        self._assert("Pasted" in result or "characters" in result, "Should paste text")
+        await self.backend.send_text(marker, pane_id)
+        self._assert(
+            await self._read_has(self.backend, pane_id, marker),
+            "typed text should appear on the input line",
+        )
+        # Clear the input line so the typed text doesn't pollute later tests.
+        await self.backend.send_control(ControlKey.U, pane_id)
 
     async def test_send_control(self):
         """Test sending control characters."""
         print("\n▶ test_send_control")
         pane_id = self.created_panes[0]
+        # REAL interrupt check: start a long-running command, then Ctrl+C it and
+        # verify the shell came back to the prompt by running a recovery echo.
         await self._delay()
-        result = await self.backend.send_control(ControlKey.L, pane_id)
-        self._assert("Ctrl+" in result or "Sent" in result, "Should send control character")
+        await self.backend.execute_command("sleep 60", pane_id)
+        await asyncio.sleep(0.6)
+        await self.backend.send_control(ControlKey.C, pane_id)
+        recover = self._sentinel("AFTERINT")
+        await self.backend.execute_command(f"echo {recover}", pane_id)
+        self._assert(
+            await self._read_has(self.backend, pane_id, recover),
+            "Ctrl+C must interrupt sleep so the recovery echo runs at the prompt",
+        )
 
     async def test_arrow_keys(self):
         """Test sending arrow keys."""
@@ -231,7 +252,8 @@ class TestTmuxBackend(BaseTestSuite):
         new_pane_id = self._extract_pane_id(result)
         if new_pane_id:
             self.created_panes.append(new_pane_id)
-            self._assert(True, f"Created new pane: {new_pane_id}")
+            sessions = await self.backend.list_sessions()
+            self._assert(new_pane_id in sessions, f"New split pane {new_pane_id} should appear in list_sessions")
         else:
             self._assert(False, "Should return new pane ID")
 
@@ -246,7 +268,8 @@ class TestTmuxBackend(BaseTestSuite):
         new_pane_id = self._extract_pane_id(result)
         if new_pane_id:
             self.created_panes.append(new_pane_id)
-            self._assert(True, f"Created new pane: {new_pane_id}")
+            sessions = await self.backend.list_sessions()
+            self._assert(new_pane_id in sessions, f"New tab pane {new_pane_id} should appear in list_sessions")
 
     async def test_focus_session(self):
         """Test focusing session."""
@@ -300,9 +323,13 @@ class TestTmuxBackend(BaseTestSuite):
 
         if new_pane_id:
             await self._delay()
-            close_result = await self.backend.close_session(new_pane_id, force=True)
+            await self.backend.close_session(new_pane_id, force=True)
             await self._delay()
-            self._assert("Closed" in close_result or "close" in close_result.lower(), "Should close pane")
+            # Exact check: the pane is gone if get_session can't find it, or
+            # returns a different pane (some backends fall back to the active one).
+            _sess = await self.backend.get_session(new_pane_id)
+            gone = _sess is None or _sess.session_id != new_pane_id
+            self._assert(gone, f"Closed pane {new_pane_id} should be gone")
         else:
             self._assert(False, "Could not create pane to close")
 

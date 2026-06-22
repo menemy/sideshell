@@ -133,46 +133,67 @@ class TestKittyBackend(BaseTestSuite):
         """Test executing command."""
         print("\n▶ test_execute_command")
         window_id = self.created_windows[0]
+        marker = self._sentinel("EXEC")
         await self._delay()
-        result = await self.backend.execute_command("echo 'hello kitty'", window_id)
+        await self.backend.execute_command(f"echo {marker}", window_id)
         await self._delay()
-        self._assert("Sent" in result or "sent" in result.lower(), "Should confirm command sent")
+        self._assert(
+            await self._read_has(self.backend, window_id, marker),
+            "echo output must actually appear in the terminal",
+        )
 
     async def test_execute_with_wait(self):
         """Test executing command with wait."""
         print("\n▶ test_execute_with_wait")
         window_id = self.created_windows[0]
+        marker = self._sentinel("WAIT")
         await self._delay()
         result = await self.backend.execute_command(
-            "echo 'wait test'", window_id, wait=True, timeout=10, watch_for="silence"
+            f"echo {marker}", window_id, wait=True, timeout=10, watch_for="silence"
         )
-        self._assert("Completed" in result or "wait test" in result, "Should complete with output")
+        self._assert(marker in result, "wait must return captured output containing the marker")
 
     async def test_read_terminal(self):
         """Test reading terminal output."""
         print("\n▶ test_read_terminal")
         window_id = self.created_windows[0]
+        marker = self._sentinel("READ")
         await self._delay()
-        await self.backend.execute_command("echo 'read test marker'", window_id)
+        await self.backend.execute_command(f"echo {marker}", window_id)
         await asyncio.sleep(0.5)
         result = await self.backend.read_terminal(lines=20, session_id=window_id)
-        self._assert("read test marker" in result or "lines" in result.lower(), "Should read terminal content")
+        self._assert(marker in result, "read must return terminal content containing the marker")
 
     async def test_send_text(self):
         """Test sending text."""
         print("\n▶ test_send_text")
         window_id = self.created_windows[0]
+        marker = self._sentinel("TEXT")
         await self._delay()
-        result = await self.backend.send_text("test text", window_id)
-        self._assert("Pasted" in result or "characters" in result, "Should paste text")
+        await self.backend.send_text(marker, window_id)
+        self._assert(
+            await self._read_has(self.backend, window_id, marker),
+            "typed text must appear on the input line",
+        )
+        # Clear the input line so later tests aren't polluted by the typed marker.
+        await self.backend.send_control(ControlKey.U, window_id)
 
     async def test_send_control(self):
         """Test sending control characters."""
         print("\n▶ test_send_control")
         window_id = self.created_windows[0]
+        # REAL interrupt check: start a long sleep with no wait, Ctrl+C it,
+        # then prove the shell returned to the prompt by running another echo.
         await self._delay()
-        result = await self.backend.send_control(ControlKey.L, window_id)
-        self._assert("Ctrl+" in result or "Sent" in result, "Should send control character")
+        await self.backend.execute_command("sleep 60", window_id)
+        await asyncio.sleep(0.6)
+        await self.backend.send_control(ControlKey.C, window_id)
+        recover = self._sentinel("AFTERINT")
+        await self.backend.execute_command(f"echo {recover}", window_id)
+        self._assert(
+            await self._read_has(self.backend, window_id, recover),
+            "Ctrl+C must interrupt sleep so the shell returns to the prompt",
+        )
 
     async def test_clear_terminal(self):
         """Test clearing terminal."""
@@ -189,12 +210,15 @@ class TestKittyBackend(BaseTestSuite):
         await self._delay()
         result = await self.backend.split_pane(SplitDirection.HORIZONTAL, window_id)
         await self._delay()
-        self._assert("Split" in result, "Should split window")
 
         new_window_id = self._extract_window_id(result)
         if new_window_id:
             self.created_windows.append(new_window_id)
-            self._assert(True, f"Created new window: {new_window_id}")
+            sessions = await self.backend.list_sessions()
+            self._assert(
+                new_window_id in sessions,
+                f"split window {new_window_id} must appear in list_sessions",
+            )
         else:
             self._assert(False, "Should return new window ID")
 
@@ -204,12 +228,15 @@ class TestKittyBackend(BaseTestSuite):
         await self._delay()
         result = await self.backend.create_tab()
         await self._delay()
-        self._assert("created" in result.lower() or "tab" in result.lower(), "Should create tab")
 
         new_window_id = self._extract_window_id(result)
         if new_window_id:
             self.created_windows.append(new_window_id)
-            self._assert(True, f"Created new window: {new_window_id}")
+            sessions = await self.backend.list_sessions()
+            self._assert(
+                new_window_id in sessions,
+                f"created tab {new_window_id} must appear in list_sessions",
+            )
 
     async def test_focus_session(self):
         """Test focusing session."""
@@ -264,9 +291,13 @@ class TestKittyBackend(BaseTestSuite):
 
         if new_window_id:
             await self._delay()
-            close_result = await self.backend.close_session(new_window_id, force=True)
+            await self.backend.close_session(new_window_id, force=True)
             await self._delay()
-            self._assert("Closed" in close_result or "close" in close_result.lower(), "Should close window")
+            # Exact check: gone if get_session can't find it, or returns a
+            # different window (some backends fall back to the active one).
+            _sess = await self.backend.get_session(new_window_id)
+            gone = _sess is None or _sess.session_id != new_window_id
+            self._assert(gone, f"closed window {new_window_id} should be gone")
         else:
             self._assert(False, "Could not create window to close")
 

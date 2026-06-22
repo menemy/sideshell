@@ -19,19 +19,19 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sideshell_mcp.backends.base import ControlKey, SplitDirection
 from sideshell_mcp.backends.wezterm_backend import WezTermBackend
+from tests.conftest import BaseTestSuite
 
 
-class TestWezTermBackend:
+class TestWezTermBackend(BaseTestSuite):
     """Test suite for WezTerm backend."""
 
     # Delay between operations to see what's happening
     OP_DELAY = 0.6
 
     def __init__(self):
+        super().__init__()
         self.backend = WezTermBackend()
         self.created_panes: list[str] = []
-        self.passed = 0
-        self.failed = 0
         self.wezterm_launched = False
 
     async def _delay(self):
@@ -151,46 +151,66 @@ class TestWezTermBackend:
         """Test executing command."""
         print("\n▶ test_execute_command")
         pane_id = self.created_panes[0]
+        marker = self._sentinel("EXEC")
         await self._delay()
-        result = await self.backend.execute_command("echo 'hello wezterm'", pane_id)
-        await self._delay()
-        self._assert("Sent" in result or "sent" in result.lower(), "Should confirm command sent")
+        await self.backend.execute_command(f"echo {marker}", pane_id)
+        self._assert(
+            await self._read_has(self.backend, pane_id, marker),
+            "echo output must actually appear in the terminal",
+        )
 
     async def test_execute_with_wait(self):
         """Test executing command with wait."""
         print("\n▶ test_execute_with_wait")
         pane_id = self.created_panes[0]
+        marker = self._sentinel("WAIT")
         await self._delay()
         result = await self.backend.execute_command(
-            "echo 'wait test'", pane_id, wait=True, timeout=10, watch_for="silence"
+            f"echo {marker}", pane_id, wait=True, timeout=10, watch_for="silence"
         )
-        self._assert("Completed" in result or "wait test" in result, "Should complete with output")
+        self._assert(marker in result, "wait must return captured output containing the marker")
 
     async def test_read_terminal(self):
         """Test reading terminal output."""
         print("\n▶ test_read_terminal")
         pane_id = self.created_panes[0]
+        marker = self._sentinel("READ")
         await self._delay()
-        await self.backend.execute_command("echo 'read test marker'", pane_id)
+        await self.backend.execute_command(f"echo {marker}", pane_id)
         await asyncio.sleep(0.5)
         result = await self.backend.read_terminal(lines=20, session_id=pane_id)
-        self._assert("read test marker" in result or "lines" in result.lower(), "Should read terminal content")
+        self._assert(marker in result, "read_terminal must return the echoed marker")
 
     async def test_send_text(self):
         """Test sending text."""
         print("\n▶ test_send_text")
         pane_id = self.created_panes[0]
+        marker = self._sentinel("SENDTEXT")
         await self._delay()
-        result = await self.backend.send_text("test text", pane_id)
-        self._assert("Pasted" in result or "characters" in result, "Should paste text")
+        await self.backend.send_text(marker, pane_id)
+        self._assert(
+            await self._read_has(self.backend, pane_id, marker),
+            "typed text must appear on the input line",
+        )
+        # Clear the input line so the unexecuted text does not pollute later tests.
+        await self.backend.send_control(ControlKey.U, pane_id)
 
     async def test_send_control(self):
-        """Test sending control characters."""
+        """Test sending control characters (real Ctrl+C interrupt check)."""
         print("\n▶ test_send_control")
         pane_id = self.created_panes[0]
+        recover = self._sentinel("AFTERINT")
         await self._delay()
-        result = await self.backend.send_control(ControlKey.L, pane_id)
-        self._assert("Ctrl+" in result or "Sent" in result, "Should send control character")
+        # Start a long-running command WITHOUT waiting, then interrupt it.
+        await self.backend.execute_command("sleep 60", pane_id)
+        await asyncio.sleep(0.6)
+        await self.backend.send_control(ControlKey.C, pane_id)
+        # If Ctrl+C interrupted sleep, the shell is back at the prompt and runs this.
+        await self.backend.execute_command(f"echo {recover}", pane_id)
+        self._assert(
+            await self._read_has(self.backend, pane_id, recover),
+            "Ctrl+C must interrupt sleep so the shell returns to the prompt",
+        )
 
     async def test_clear_terminal(self):
         """Test clearing terminal."""
@@ -207,12 +227,12 @@ class TestWezTermBackend:
         await self._delay()
         result = await self.backend.split_pane(SplitDirection.HORIZONTAL, pane_id)
         await self._delay()
-        self._assert("Split" in result, "Should split pane")
 
         new_pane_id = self._extract_pane_id(result)
         if new_pane_id:
             self.created_panes.append(new_pane_id)
-            self._assert(True, f"Created new pane: {new_pane_id}")
+            sessions = await self.backend.list_sessions()
+            self._assert(new_pane_id in sessions, f"New split pane {new_pane_id} must appear in list_sessions")
         else:
             self._assert(False, "Should return new pane ID")
 
@@ -222,12 +242,14 @@ class TestWezTermBackend:
         await self._delay()
         result = await self.backend.create_tab()
         await self._delay()
-        self._assert("created" in result.lower() or "pane" in result.lower(), "Should create tab")
 
         new_pane_id = self._extract_pane_id(result)
         if new_pane_id:
             self.created_panes.append(new_pane_id)
-            self._assert(True, f"Created new pane: {new_pane_id}")
+            sessions = await self.backend.list_sessions()
+            self._assert(new_pane_id in sessions, f"New tab pane {new_pane_id} must appear in list_sessions")
+        else:
+            self._assert(False, "Should return new pane ID")
 
     async def test_focus_session(self):
         """Test focusing session."""
@@ -267,9 +289,13 @@ class TestWezTermBackend:
 
         if new_pane_id:
             await self._delay()
-            close_result = await self.backend.close_session(new_pane_id, force=True)
+            await self.backend.close_session(new_pane_id, force=True)
             await self._delay()
-            self._assert("Closed" in close_result or "close" in close_result.lower(), "Should close pane")
+            # Exact check: gone if get_session can't find it, or returns a
+            # different pane (some backends fall back to the active one).
+            _sess = await self.backend.get_session(new_pane_id)
+            gone = _sess is None or _sess.session_id != new_pane_id
+            self._assert(gone, f"Closed pane {new_pane_id} should be gone")
         else:
             self._assert(False, "Could not create pane to close")
 
