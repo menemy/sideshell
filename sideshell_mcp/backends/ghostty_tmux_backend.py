@@ -309,10 +309,12 @@ end tell'''
         return f"Split {dtext}. session_id: {name}"
 
     async def create_session(self, profile: str | None = None) -> str:
-        """Smart creation: split an existing surface if any, else new window."""
-        if self._ghostty_terminals:
-            return await self.split_pane(SplitDirection.HORIZONTAL)
-        return await self.create_window()
+        """Smart creation: split the current Ghostty surface so the session lands
+        next to whatever is in front (the sidecar sits beside the AI's terminal),
+        matching iTerm2/tmux/kitty/wezterm. split_pane falls back to a new window
+        when there's nothing to split. For an explicit new window, use the
+        new-window tool (create_window)."""
+        return await self.split_pane(SplitDirection.HORIZONTAL)
 
     # --- Focus / current / close (native AppleScript) -------------------------
 

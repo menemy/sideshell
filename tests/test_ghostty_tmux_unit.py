@@ -190,8 +190,17 @@ class TestCreateSession:
         assert "Split" in out
 
     @pytest.mark.asyncio
-    async def test_create_session_new_window_when_empty(self, backend):
+    async def test_create_session_splits_current_window_even_when_empty(self, backend):
+        # Sidecar default: split the front surface instead of opening a window,
+        # so the session lands next to the AI's terminal (matches other backends).
         backend._osascript = AsyncMock(return_value="NEW")
+        out = await backend.create_session()
+        assert "Split" in out
+
+    @pytest.mark.asyncio
+    async def test_create_session_falls_back_to_window_when_nothing_to_split(self, backend):
+        # No front window to split -> the split AppleScript fails -> new window.
+        backend._osascript = AsyncMock(side_effect=[Exception("no front window"), "NEW"])
         out = await backend.create_session()
         assert "Created Ghostty window" in out
 
