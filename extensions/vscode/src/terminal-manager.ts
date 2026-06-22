@@ -14,6 +14,9 @@ export class TerminalManager {
     private disposables: vscode.Disposable[] = [];
     private terminalIds: Map<vscode.Terminal, string> = new Map();
     private nextId: number = 1;
+    // Executions started by our executeCommand(): the global end-event handler
+    // must NOT also drain their read() stream (a stream is single-consumer).
+    private pendingExecutions: Set<vscode.TerminalShellExecution> = new Set();
 
     constructor(bufferSize: number = 10000) {
         this.maxBufferSize = bufferSize;
@@ -64,9 +67,13 @@ export class TerminalManager {
     }
 
     private async captureExecutionOutput(event: vscode.TerminalShellExecutionEndEvent) {
+        // Commands we launched via executeCommand() drain their own stream;
+        // reading it again here would yield nothing and race with that read.
+        if (this.pendingExecutions.has(event.execution)) {
+            return;
+        }
         const terminal = event.terminal;
         const id = this.getTerminalId(terminal);
-        const execution = event.shellIntegration?.executeCommand?.toString() || '';
 
         try {
             const stream = event.execution.read();
@@ -138,13 +145,90 @@ export class TerminalManager {
         return `Sent text to terminal ${terminalId || this.getTerminalId(terminal)}`;
     }
 
-    executeCommand(
+    /**
+     * Wait for VS Code shell integration to become available on a terminal.
+     * Returns the TerminalShellIntegration, or undefined if it doesn't activate
+     * within timeoutMs (e.g. unsupported shell, or a custom rc that doesn't
+     * source the injected script).
+     */
+    private waitForShellIntegration(
+        terminal: vscode.Terminal,
+        timeoutMs: number,
+    ): Promise<vscode.TerminalShellIntegration | undefined> {
+        if (terminal.shellIntegration) {
+            return Promise.resolve(terminal.shellIntegration);
+        }
+        return new Promise((resolve) => {
+            const timer = setTimeout(() => { sub.dispose(); resolve(undefined); }, timeoutMs);
+            const sub = vscode.window.onDidChangeTerminalShellIntegration((e) => {
+                if (e.terminal === terminal && e.shellIntegration) {
+                    clearTimeout(timer);
+                    sub.dispose();
+                    resolve(e.shellIntegration);
+                }
+            });
+        });
+    }
+
+    /**
+     * Drain an execution's output stream and await completion (or timeout),
+     * also appending to the per-terminal buffer so read_terminal sees it.
+     */
+    private async collectExecution(
+        execution: vscode.TerminalShellExecution,
+        id: string,
+        timeoutMs: number,
+    ): Promise<string> {
+        this.pendingExecutions.add(execution);
+        let output = '';
+        const readPromise = (async () => {
+            try {
+                for await (const chunk of execution.read()) { output += chunk; }
+            } catch { /* stream may close abruptly */ }
+        })();
+
+        let exitCode: number | undefined;
+        const endPromise = new Promise<boolean>((resolve) => {
+            const sub = vscode.window.onDidEndTerminalShellExecution((e) => {
+                if (e.execution === execution) {
+                    exitCode = e.exitCode;
+                    sub.dispose();
+                    resolve(true);
+                }
+            });
+        });
+        const timedOut = await Promise.race([
+            endPromise.then(() => false),
+            new Promise<boolean>((r) => setTimeout(() => r(true), timeoutMs)),
+        ]);
+        // Give the read stream a brief moment to flush after the end event.
+        await Promise.race([readPromise, new Promise((r) => setTimeout(r, 500))]);
+        this.pendingExecutions.delete(execution);
+
+        // The raw stream includes VS Code's shell-integration OSC markers
+        // (633 / 133). Strip them so callers get clean command output.
+        output = output.replace(/\x1b\]6(?:33|97);[\s\S]*?(?:\x07|\x1b\\)/g, '')
+            .replace(/\x1b\]133;[\s\S]*?(?:\x07|\x1b\\)/g, '');
+
+        const lines = output.split('\n');
+        const buffer = this.outputBuffers.get(id) || [];
+        buffer.push(...lines);
+        while (buffer.length > this.maxBufferSize) { buffer.shift(); }
+        this.outputBuffers.set(id, buffer);
+
+        if (timedOut) {
+            return `Command timed out after ${Math.round(timeoutMs / 1000)}s in terminal ${id}.\nPartial output:\n${output}`;
+        }
+        return `Executed in terminal ${id} (exit ${exitCode ?? '?'}):\n${output}`;
+    }
+
+    async executeCommand(
         terminalId: string | null,
         command: string,
-        _wait: boolean,
-        _timeout: number,
+        wait: boolean,
+        timeout: number,
         _watchFor: string,
-    ): string {
+    ): Promise<string> {
         const terminal = this.resolveTerminal(terminalId);
         if (!terminal) { return `Terminal not found: ${terminalId}`; }
 
@@ -154,17 +238,30 @@ export class TerminalManager {
             return 'Cannot execute commands in AI terminal. Use \'split\' to create a new pane.';
         }
 
-        terminal.sendText(command);
+        const id = this.getTerminalId(terminal);
         terminal.show();
 
-        const id = this.getTerminalId(terminal);
-
-        // If wait is requested, we'd need shell integration to know when command finishes
-        // For now, return immediately with the command sent confirmation
-        if (_wait) {
-            return `Command sent to terminal ${id}. Note: wait/timeout requires shell integration.`;
+        // Prefer shell integration: it runs the command AND lets us capture
+        // output + know when it finishes. Wait a little longer when the caller
+        // asked to wait, since integration activates a few hundred ms after a
+        // terminal is created.
+        const si = await this.waitForShellIntegration(terminal, wait ? 5000 : 1500);
+        if (si) {
+            const execution = si.executeCommand(command);
+            if (!wait) {
+                return `Executed in terminal ${id}: ${command}`;
+            }
+            return this.collectExecution(execution, id, Math.max(1, timeout) * 1000);
         }
 
+        // No shell integration — fall back to a blind write. wait/output capture
+        // are unavailable here (this is a VS Code platform constraint, not a bug).
+        terminal.sendText(command);
+        if (wait) {
+            return `Command sent to terminal ${id}. Note: wait/timeout and output capture `
+                + `require VS Code shell integration, which is not active for this terminal `
+                + `(needs a supported shell with terminal.integrated.shellIntegration.enabled).`;
+        }
         return `Executed in terminal ${id}: ${command}`;
     }
 
