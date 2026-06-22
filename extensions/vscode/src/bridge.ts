@@ -40,8 +40,24 @@ export class SideshellBridge {
         return this._isRunning;
     }
 
+    // Windows has no Unix domain sockets (and Node/asyncio can't use them
+    // there), so on win32 the bridge listens on a named pipe instead. The
+    // Python client mirrors this (transport "pipe" in the port file).
+    private get isWindows(): boolean {
+        return process.platform === 'win32';
+    }
+
     get socketPath(): string {
         return path.join(os.homedir(), '.sideshell', 'vscode.sock');
+    }
+
+    get pipePath(): string {
+        return '\\\\.\\pipe\\sideshell-vscode';
+    }
+
+    /** The address net.Server.listen() should bind: a pipe on Windows. */
+    get listenAddress(): string {
+        return this.isWindows ? this.pipePath : this.socketPath;
     }
 
     private get portFilePath(): string {
@@ -54,33 +70,38 @@ export class SideshellBridge {
         this._token = crypto.randomBytes(32).toString('hex');
         this._approvalPending = false;
 
-        // Ensure ~/.sideshell exists BEFORE listen() — a Unix-domain socket
-        // can only bind inside an existing directory. On a fresh machine the
-        // directory is absent, so without this listen() fails with ENOENT/EACCES
-        // and the bridge never starts (writePortFile, which also creates it,
-        // only runs in the listen success callback — a chicken-and-egg).
+        // The port file always lives under ~/.sideshell; on Unix the socket
+        // does too. Ensure the directory exists BEFORE listen() — a Unix-domain
+        // socket can only bind inside an existing directory, and on a fresh
+        // machine it's absent, so listen() would fail ENOENT/EACCES and the
+        // bridge could never start (writePortFile, which also creates it, only
+        // runs in the listen success callback — a chicken-and-egg).
         try {
-            const dir = path.dirname(this.socketPath);
+            const dir = path.dirname(this.portFilePath);
             if (!fs.existsSync(dir)) {
                 fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
             }
         } catch (e) {
-            console.error('sideshell: failed to create socket dir:', e);
+            console.error('sideshell: failed to create ~/.sideshell:', e);
         }
 
-        // Clean up stale socket file
-        try { fs.unlinkSync(this.socketPath); } catch { /* ok */ }
+        // Clean up a stale Unix socket file (named pipes have no fs entry).
+        if (!this.isWindows) {
+            try { fs.unlinkSync(this.socketPath); } catch { /* ok */ }
+        }
 
         this.server = net.createServer((socket: net.Socket) => {
             this.handleConnection(socket);
         });
 
-        this.server.listen(this.socketPath, () => {
+        this.server.listen(this.listenAddress, () => {
             this._isRunning = true;
-            // Set socket file permissions to owner-only
-            try { fs.chmodSync(this.socketPath, 0o600); } catch { /* ok */ }
+            // Restrict the Unix socket to the owner (no-op for named pipes).
+            if (!this.isWindows) {
+                try { fs.chmodSync(this.socketPath, 0o600); } catch { /* ok */ }
+            }
             this.writePortFile();
-            console.log(`sideshell bridge listening on ${this.socketPath}`);
+            console.log(`sideshell bridge listening on ${this.listenAddress}`);
         });
 
         this.server.on('error', (err: any) => {
@@ -199,8 +220,10 @@ export class SideshellBridge {
             this.server = null;
         }
         this.removePortFile();
-        // Clean up socket file
-        try { fs.unlinkSync(this.socketPath); } catch { /* ok */ }
+        // Clean up the Unix socket file (named pipes vanish with the server).
+        if (!this.isWindows) {
+            try { fs.unlinkSync(this.socketPath); } catch { /* ok */ }
+        }
         this.terminalManager.dispose();
     }
 
@@ -307,7 +330,9 @@ export class SideshellBridge {
                 fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
             }
             const data = JSON.stringify({
-                socket: this.socketPath,
+                transport: this.isWindows ? 'pipe' : 'unix',
+                // Both keys are written for clarity; the client picks by transport.
+                ...(this.isWindows ? { pipe: this.pipePath } : { socket: this.socketPath }),
                 pid: process.pid,
                 token: this._token,
                 ide: 'vscode',
