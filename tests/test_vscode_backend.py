@@ -39,10 +39,10 @@ class TestVSCodeBackendInit:
                 backend = VSCodeBackend()
                 assert backend.is_available is False
 
-    def test_install_instructions_contain_port(self) -> None:
-        formatted = INSTALL_INSTRUCTIONS.format(port=46117)
-        assert "46117" in formatted
-        assert "code --install-extension" in formatted
+    def test_install_instructions_reference_socket(self) -> None:
+        # Unix-socket architecture: install text references the socket, not a port.
+        assert "vscode.sock" in INSTALL_INSTRUCTIONS
+        assert "code --install-extension" in INSTALL_INSTRUCTIONS
 
 
 class TestVSCodeBackendConnection:

@@ -48,10 +48,11 @@ class TestIntelliJBackendInit:
                 backend = IntelliJBackend()
                 assert backend.is_available is False
 
-    def test_install_instructions_contain_port(self) -> None:
-        formatted = INSTALL_INSTRUCTIONS.format(port=46118)
-        assert "46118" in formatted
-        assert "JetBrains" in formatted
+    def test_install_instructions_reference_socket(self) -> None:
+        # Architecture migrated from a TCP port to a Unix socket; the install
+        # text now points at ~/.sideshell/intellij.sock, not a port number.
+        assert "intellij.sock" in INSTALL_INSTRUCTIONS
+        assert "JetBrains" in INSTALL_INSTRUCTIONS
 
     def test_install_instructions_list_all_ides(self) -> None:
         assert "IntelliJ IDEA" in INSTALL_INSTRUCTIONS
