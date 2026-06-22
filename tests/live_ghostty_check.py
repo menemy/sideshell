@@ -7,6 +7,7 @@ Cleans up everything at the end.
 """
 
 import asyncio
+import os
 import re
 import sys
 
@@ -42,6 +43,7 @@ async def main():
     await backend.connect()
     server = VibeSideshellServer(backend)
     created = []
+    marker = f"GH_{os.getpid()}"  # unique per run, used to verify real I/O
 
     read_handler = server.server.request_handlers[ReadResourceRequest]
     list_res = server.server.request_handlers[ListResourcesRequest]
@@ -63,18 +65,22 @@ async def main():
         out = await server._route_tool_call("list", {})
         rec("list (one)", a in out if a else False, out.split(chr(10))[0])
 
-        # 4. execute fire-and-forget
+        # 4. execute fire-and-forget -> the marker must really land in the surface
+        fnf_marker = f"{marker}_FNF"
         out = await server._route_tool_call(
-            "execute", {"command": "echo FNF_MARKER", "session_id": a, "wait": False, "return_focus": False}
+            "execute", {"command": f"echo {fnf_marker}", "session_id": a, "wait": False, "return_focus": False}
         )
         rec("execute (wait=False)", "Sent" in out, out.strip()[:60])
-        await asyncio.sleep(0.4)
+        await asyncio.sleep(0.6)
+        scr = await server._route_tool_call("read", {"session_id": a, "lines": 40})
+        rec("execute (wait=False) effect", fnf_marker in scr, f"saw {fnf_marker}={fnf_marker in scr}")
 
-        # 5. execute wait=True (silence)
+        # 5. execute wait=True (silence) -> the exact marker must appear in the result
+        wait_marker = f"{marker}_WAIT"
         out = await server._route_tool_call(
             "execute",
             {
-                "command": "echo WAIT_MARKER",
+                "command": f"echo {wait_marker}",
                 "session_id": a,
                 "wait": True,
                 "timeout": 8,
@@ -82,11 +88,11 @@ async def main():
                 "return_focus": False,
             },
         )
-        rec("execute (wait=True)", "WAIT_MARKER" in out or "Completed" in out, out.strip()[:60])
+        rec("execute (wait=True)", wait_marker in out, out.strip()[:60])
 
-        # 6. read
-        out = await server._route_tool_call("read", {"session_id": a, "lines": 20})
-        rec("read", "WAIT_MARKER" in out or "lines" in out.lower(), f"{len(out)} chars")
+        # 6. read -> the exact marker echoed above must be present in a fresh read
+        out = await server._route_tool_call("read", {"session_id": a, "lines": 40})
+        rec("read", wait_marker in out, f"{len(out)} chars, saw {wait_marker}={wait_marker in out}")
 
         # 7. control-char (clear, ctrl+l)
         out = await server._route_tool_call("control-char", {"key": "l", "session_id": a, "return_focus": False})
@@ -203,15 +209,30 @@ async def main():
         txt = res.root.contents[0].text
         rec("resource session screen", "lines" in txt.lower(), f"{len(txt)} chars")
 
-        # 26. close-session for all
+        # 26. close-session for all -> surfaces must really be gone afterwards
+        to_close = list(created)
         closed = 0
-        for s in created:
+        for s in to_close:
             out = await server._route_tool_call("close-session", {"session_id": s})
             if "Closed" in out:
                 closed += 1
             await asyncio.sleep(0.2)
-        rec("close-session", closed == len(created), f"closed {closed}/{len(created)}")
         created = []
+        await asyncio.sleep(0.3)
+        listing = await server._route_tool_call("list", {})
+        still_listed = [s for s in to_close if s in listing]
+        # get_session may fall back to the active surface when the exact id is
+        # gone, so "gone" = not found OR resolves to a different surface.
+        if to_close:
+            _sess = await server.backend.get_session(to_close[-1])
+            gone = _sess is None or _sess.session_id != to_close[-1]
+        else:
+            gone = True
+        rec(
+            "close-session",
+            closed == len(to_close) and not still_listed and gone,
+            f"closed {closed}/{len(to_close)}, still listed {still_listed}, get_session gone={gone}",
+        )
 
     except Exception as e:
         import traceback

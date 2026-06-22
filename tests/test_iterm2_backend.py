@@ -100,30 +100,33 @@ class TestITermBackend(BaseTestSuite):
         """Test executing command."""
         print("\n▶ test_execute_command")
         session_id = self.created_sessions[0]
+        marker = self._sentinel("EXEC")
         await self._delay()
-        result = await self.backend.execute_command("echo 'hello iterm'", session_id)
-        await self._delay()
-        self._assert("Sent" in result or "sent" in result.lower(), "Should confirm command sent")
+        await self.backend.execute_command(f"echo {marker}", session_id)
+        appeared = await self._read_has(self.backend, session_id, marker)
+        self._assert(appeared, "echo output should appear in terminal")
 
     async def test_execute_with_wait(self):
         """Test executing command with wait."""
         print("\n▶ test_execute_with_wait")
         session_id = self.created_sessions[0]
+        marker = self._sentinel("WAIT")
         await self._delay()
         result = await self.backend.execute_command(
-            "echo 'wait test'", session_id, wait=True, timeout=10, watch_for="silence"
+            f"echo {marker}", session_id, wait=True, timeout=10, watch_for="silence"
         )
-        self._assert("Completed" in result or "wait test" in result, "Should complete with output")
+        self._assert(marker in result, "wait result should contain echo output")
 
     async def test_read_terminal(self):
         """Test reading terminal output."""
         print("\n▶ test_read_terminal")
         session_id = self.created_sessions[0]
+        marker = self._sentinel("READ")
         await self._delay()
-        await self.backend.execute_command("echo 'read test marker'", session_id)
+        await self.backend.execute_command(f"echo {marker}", session_id)
         await asyncio.sleep(0.5)
         result = await self.backend.read_terminal(lines=20, session_id=session_id)
-        self._assert("read test marker" in result or "lines" in result.lower(), "Should read terminal content")
+        self._assert(marker in result, "Should read echo output from terminal")
 
     async def test_cursor_position(self):
         """Test that cursor position is returned."""
@@ -137,17 +140,28 @@ class TestITermBackend(BaseTestSuite):
         """Test sending text."""
         print("\n▶ test_send_text")
         session_id = self.created_sessions[0]
+        marker = self._sentinel("TEXT")
         await self._delay()
-        result = await self.backend.send_text("test text", session_id)
-        self._assert("Pasted" in result or "characters" in result, "Should paste text")
+        await self.backend.send_text(marker, session_id)
+        appeared = await self._read_has(self.backend, session_id, marker)
+        self._assert(appeared, "sent text should appear in terminal")
+        # Clear the line so the un-executed text does not pollute later reads.
+        await self.backend.send_control(ControlKey.U, session_id)
 
     async def test_send_control(self):
-        """Test sending control characters."""
+        """Test sending control characters performs a real interrupt."""
         print("\n▶ test_send_control")
         session_id = self.created_sessions[0]
         await self._delay()
-        result = await self.backend.send_control(ControlKey.L, session_id)
-        self._assert("Ctrl+" in result or "Sent" in result, "Should send control character")
+        # Start a long-running command, then interrupt it with Ctrl+C.
+        await self.backend.execute_command("sleep 60", session_id)
+        await asyncio.sleep(0.6)
+        await self.backend.send_control(ControlKey.C, session_id)
+        # If the interrupt worked the shell is responsive again and runs echo.
+        recover = self._sentinel("AFTERINT")
+        await self.backend.execute_command(f"echo {recover}", session_id)
+        appeared = await self._read_has(self.backend, session_id, recover)
+        self._assert(appeared, "shell should be responsive after Ctrl+C interrupt")
 
     async def test_arrow_keys(self):
         """Test sending arrow keys."""
@@ -192,12 +206,12 @@ class TestITermBackend(BaseTestSuite):
         await self._delay()
         result = await self.backend.split_pane(SplitDirection.HORIZONTAL, session_id)
         await self._delay()
-        self._assert("Split" in result, "Should split pane")
 
         new_session_id = self._extract_session_id(result)
         if new_session_id:
             self.created_sessions.append(new_session_id)
-            self._assert(True, f"Created new session: {new_session_id}")
+            listed = await self.backend.list_sessions()
+            self._assert(new_session_id in listed, f"New pane {new_session_id} should appear in list_sessions")
         else:
             self._assert(False, "Should return new session ID")
 
@@ -207,12 +221,14 @@ class TestITermBackend(BaseTestSuite):
         await self._delay()
         result = await self.backend.create_tab()
         await self._delay()
-        self._assert("created" in result.lower() or "session_id" in result.lower(), "Should create tab")
 
         new_session_id = self._extract_session_id(result)
         if new_session_id:
             self.created_sessions.append(new_session_id)
-            self._assert(True, f"Created new session: {new_session_id}")
+            listed = await self.backend.list_sessions()
+            self._assert(new_session_id in listed, f"New tab {new_session_id} should appear in list_sessions")
+        else:
+            self._assert(False, "Should return new session ID")
 
     async def test_focus_session(self):
         """Test focusing session."""
@@ -303,9 +319,11 @@ class TestITermBackend(BaseTestSuite):
 
         if new_session_id:
             await self._delay()
-            close_result = await self.backend.close_session(new_session_id, force=True)
+            await self.backend.close_session(new_session_id, force=True)
             await self._delay()
-            self._assert("Closed" in close_result or "close" in close_result.lower(), "Should close session")
+            _sess = await self.backend.get_session(new_session_id)
+            gone = _sess is None or _sess.session_id != new_session_id
+            self._assert(gone, "Closed session should no longer be retrievable")
         else:
             self._assert(False, "Could not create session to close")
 
