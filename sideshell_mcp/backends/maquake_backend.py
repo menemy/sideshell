@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import socket
+from collections.abc import Iterator
 
 from .base import (
     ControlKey,
@@ -110,9 +111,9 @@ class MaQuakeBackend(TerminalBackend):
             resp = await self._send({"action": "list"})
             if not resp.get("ok"):
                 return None
-            for tab in resp.get("tabs", []):
-                if tab["session_id"] == session_id:
-                    return self._tab_to_session(tab)
+            for tab, session in self._iter_sessions(resp.get("tabs", [])):
+                if session.get("session_id") == session_id:
+                    return self._session_info(tab, session)
             return None
 
         # Get active session
@@ -124,11 +125,29 @@ class MaQuakeBackend(TerminalBackend):
             return None
         return await self.get_session(active_id)
 
-    def _tab_to_session(self, tab: dict) -> SessionInfo:
+    @staticmethod
+    def _iter_sessions(tabs: list[dict]) -> Iterator[tuple[dict, dict]]:
+        """Yield (tab, session) for every session across all tabs.
+
+        maquake nests one or more sessions under each tab
+        (``tab["sessions"]`` -> ``{"session_id", "cwd", "focused"}``). Older
+        builds put those fields directly on the tab, so fall back to treating
+        the tab itself as the session for backward compatibility.
+        """
+        for tab in tabs:
+            sessions = tab.get("sessions")
+            if sessions:
+                for session in sessions:
+                    yield tab, session
+            else:
+                yield tab, tab
+
+    @staticmethod
+    def _session_info(tab: dict, session: dict) -> SessionInfo:
         return SessionInfo(
-            session_id=tab["session_id"],
+            session_id=session["session_id"],
             name=tab.get("title", "maquake"),
-            path=tab.get("cwd", "~"),
+            path=session.get("cwd", tab.get("cwd", "~")),
             job=tab.get("title", "shell"),
             at_prompt=True,  # maquake doesn't expose running command info
         )
@@ -139,12 +158,14 @@ class MaQuakeBackend(TerminalBackend):
             return f"Error: {resp.get('error', 'unknown')}"
 
         tabs = resp.get("tabs", [])
-        result = [f"Total: {len(tabs)} tabs\n"]
-        for tab in tabs:
-            indicator = "●" if tab.get("active") else "○"
+        pairs = list(self._iter_sessions(tabs))
+        result = [f"Total: {len(pairs)} session(s) across {len(tabs)} tab(s)\n"]
+        for tab, session in pairs:
+            active = tab.get("active") and session.get("focused", True)
+            indicator = "●" if active else "○"
             title = tab.get("title", "untitled")
-            cwd = tab.get("cwd", "~")
-            sid = tab["session_id"]
+            cwd = session.get("cwd", tab.get("cwd", "~"))
+            sid = session.get("session_id", "?")
             result.append(f"  {indicator} {title} @ {cwd} [{sid}]")
         return "\n".join(result)
 

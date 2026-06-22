@@ -141,10 +141,12 @@ async def test_all():
     list_resp = await backend._send({"action": "list"})
     if list_resp.get("ok"):
         tabs = list_resp.get("tabs", [])
-        for tab in reversed(tabs):
-            if tab["session_id"] != active_id:
-                close_result = await backend.close_session(tab["session_id"])
-                print(f"Closed extra tab: {close_result}")
+        pairs = list(backend._iter_sessions(tabs))
+        for _tab, session in reversed(pairs):
+            sid = session.get("session_id")
+            if sid and sid != active_id:
+                close_result = await backend.close_session(sid)
+                print(f"Closed extra session: {close_result}")
 
     # 26. disconnect
     await backend.disconnect()
