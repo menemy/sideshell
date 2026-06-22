@@ -30,6 +30,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -76,38 +77,66 @@ class IDEBridgeClient:
     def socket_path(self) -> Path:
         return SIDESHELL_DIR / f"{self.ide_name}.sock"
 
-    def _discover_socket(self) -> tuple[str, str | None]:
-        """Discover the socket path and auth token.
+    def _discover_endpoint(self) -> tuple[str, str, str | None]:
+        """Discover the bridge transport, address, and auth token.
 
-        Reads port file for socket path and token.
-        Falls back to well-known socket path.
+        Reads the port file written by the IDE extension/plugin. Two transports:
+          - "unix": a Unix domain socket (macOS/Linux); address is the socket path.
+          - "pipe": a Windows named pipe; address is the pipe name (\\\\.\\pipe\\...).
 
         Returns:
-            (socket_path, token) tuple. Token may be None.
+            (transport, address, token). transport is "pipe" or "unix".
         """
         if self.port_file.exists():
             try:
-                content = self.port_file.read_text().strip()
-                data = json.loads(content)
+                data = json.loads(self.port_file.read_text().strip())
                 if isinstance(data, dict):
-                    sock = data.get("socket", str(self.socket_path))
                     token = data.get("token")
+                    # Windows extensions advertise a named pipe.
+                    if data.get("transport") == "pipe" or data.get("pipe"):
+                        pipe = data.get("pipe") or rf"\\.\pipe\sideshell-{self.ide_name}"
+                        logger.debug(f"Discovered {self.ide_name} pipe: {pipe}")
+                        return "pipe", pipe, token
+                    sock = data.get("socket", str(self.socket_path))
                     logger.debug(f"Discovered {self.ide_name} socket: {sock}")
-                    return sock, token
+                    return "unix", sock, token
             except (json.JSONDecodeError, ValueError):
                 pass
-        return str(self.socket_path), None
+        # No/invalid port file: default to the platform's well-known endpoint.
+        if sys.platform == "win32":
+            return "pipe", rf"\\.\pipe\sideshell-{self.ide_name}", None
+        return "unix", str(self.socket_path), None
+
+    async def _open_pipe(self, pipe_path: str) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+        """Open a Windows named-pipe client as asyncio streams.
+
+        Uses the Proactor event loop's create_pipe_connection (Windows only), and
+        wraps the transport in StreamReader/StreamWriter exactly like
+        asyncio.open_unix_connection does for sockets.
+        """
+        loop = asyncio.get_running_loop()
+        create_pipe = getattr(loop, "create_pipe_connection", None)
+        if create_pipe is None:
+            raise IDEBridgeError("Named-pipe transport requires the Windows Proactor event loop (asyncio).")
+        reader = asyncio.StreamReader(loop=loop)
+        protocol = asyncio.StreamReaderProtocol(reader, loop=loop)
+        pipe_transport, _ = await create_pipe(lambda: protocol, pipe_path)
+        writer = asyncio.StreamWriter(pipe_transport, protocol, reader, loop)
+        return reader, writer
 
     async def connect(self) -> bool:
-        """Connect to the IDE Unix socket server."""
+        """Connect to the IDE bridge (Unix socket on macOS/Linux, named pipe on Windows)."""
         try:
-            sock_path, self._token = self._discover_socket()
-            logger.info(f"Connecting to {self.ide_name} at {sock_path}")
+            transport, address, self._token = self._discover_endpoint()
+            logger.info(f"Connecting to {self.ide_name} via {transport} at {address}")
 
-            self._reader, self._writer = await asyncio.wait_for(
-                asyncio.open_unix_connection(sock_path),
-                timeout=5.0,
-            )
+            if transport == "pipe":
+                self._reader, self._writer = await asyncio.wait_for(self._open_pipe(address), timeout=5.0)
+            else:
+                self._reader, self._writer = await asyncio.wait_for(
+                    asyncio.open_unix_connection(address),
+                    timeout=5.0,
+                )
 
             # Send token handshake as first message
             handshake = {"type": "auth", "token": self._token or ""}

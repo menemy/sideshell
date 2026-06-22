@@ -6,6 +6,7 @@ import asyncio
 import json
 import shutil
 import stat
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -92,7 +93,8 @@ class TestIDEBridgeClient:
 
         with patch("sideshell_mcp.backends.ide_bridge.SIDESHELL_DIR", tmp_path):
             client = IDEBridgeClient("vscode", DEFAULT_VSCODE_PORT)
-            sock, token = client._discover_socket()
+            transport, sock, token = client._discover_endpoint()
+            assert transport == "unix"
             assert sock == "/custom/path.sock"
             assert token is None
 
@@ -102,16 +104,20 @@ class TestIDEBridgeClient:
 
         with patch("sideshell_mcp.backends.ide_bridge.SIDESHELL_DIR", tmp_path):
             client = IDEBridgeClient("vscode", DEFAULT_VSCODE_PORT)
-            sock, token = client._discover_socket()
-            assert sock == "/custom/path.sock"
-            assert token == "abc123"
+            transport, sock, token = client._discover_endpoint()
+            assert (transport, sock, token) == ("unix", "/custom/path.sock", "abc123")
 
     def test_discover_socket_default_when_no_file(self, tmp_path: Path) -> None:
         with patch("sideshell_mcp.backends.ide_bridge.SIDESHELL_DIR", tmp_path):
             client = IDEBridgeClient("vscode", DEFAULT_VSCODE_PORT)
-            sock, token = client._discover_socket()
-            assert sock == str(tmp_path / "vscode.sock")
+            transport, sock, token = client._discover_endpoint()
             assert token is None
+            # default endpoint is platform-specific: unix socket off Windows,
+            # named pipe on Windows.
+            if sys.platform == "win32":
+                assert transport == "pipe"
+            else:
+                assert (transport, sock) == ("unix", str(tmp_path / "vscode.sock"))
 
     def test_discover_socket_default_when_bad_json(self, tmp_path: Path) -> None:
         port_file = tmp_path / "vscode-port"
@@ -119,9 +125,12 @@ class TestIDEBridgeClient:
 
         with patch("sideshell_mcp.backends.ide_bridge.SIDESHELL_DIR", tmp_path):
             client = IDEBridgeClient("vscode", DEFAULT_VSCODE_PORT)
-            sock, token = client._discover_socket()
-            assert sock == str(tmp_path / "vscode.sock")
+            transport, sock, token = client._discover_endpoint()
             assert token is None
+            if sys.platform == "win32":
+                assert transport == "pipe"
+            else:
+                assert (transport, sock) == ("unix", str(tmp_path / "vscode.sock"))
 
     def test_discover_socket_falls_back_socket_when_token_absent(
         self,
@@ -134,9 +143,38 @@ class TestIDEBridgeClient:
 
         with patch("sideshell_mcp.backends.ide_bridge.SIDESHELL_DIR", tmp_path):
             client = IDEBridgeClient("vscode", DEFAULT_VSCODE_PORT)
-            sock, token = client._discover_socket()
-            assert sock == str(tmp_path / "vscode.sock")
+            transport, sock, token = client._discover_endpoint()
             assert token is None
+            if sys.platform != "win32":
+                assert (transport, sock) == ("unix", str(tmp_path / "vscode.sock"))
+
+    def test_discover_endpoint_named_pipe_from_json(self, tmp_path: Path) -> None:
+        # A Windows IDE writes transport=pipe + an explicit pipe path.
+        port_file = tmp_path / "intellij-port"
+        port_file.write_text(
+            json.dumps(
+                {
+                    "transport": "pipe",
+                    "pipe": r"\\.\pipe\sideshell-intellij",
+                    "token": "tok",
+                }
+            )
+        )
+
+        with patch("sideshell_mcp.backends.ide_bridge.SIDESHELL_DIR", tmp_path):
+            client = IDEBridgeClient("intellij", DEFAULT_INTELLIJ_PORT)
+            transport, addr, token = client._discover_endpoint()
+            assert (transport, addr, token) == ("pipe", r"\\.\pipe\sideshell-intellij", "tok")
+
+    def test_discover_endpoint_pipe_default_path(self, tmp_path: Path) -> None:
+        # transport=pipe but no explicit path -> derive the conventional name.
+        port_file = tmp_path / "vscode-port"
+        port_file.write_text(json.dumps({"transport": "pipe", "token": "t2"}))
+
+        with patch("sideshell_mcp.backends.ide_bridge.SIDESHELL_DIR", tmp_path):
+            client = IDEBridgeClient("vscode", DEFAULT_VSCODE_PORT)
+            transport, addr, token = client._discover_endpoint()
+            assert (transport, addr, token) == ("pipe", r"\\.\pipe\sideshell-vscode", "t2")
 
     @pytest.mark.asyncio
     async def test_connect_fails_gracefully(self, tmp_path: Path) -> None:
