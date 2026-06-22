@@ -43,24 +43,28 @@ class TestTmuxBackend(BaseTestSuite):
         if not self.backend.is_available:
             raise RuntimeError("tmux is not available")
 
-        # Open a terminal window with tmux so user can see the tests
-        print("Opening terminal window with tmux...")
-        subprocess.Popen(
-            [
-                "osascript",
-                "-e",
-                """
-            tell application "Terminal"
-                activate
-                do script "tmux attach || tmux new-session"
-            end tell
-            """,
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        self.terminal_opened = True
-        await asyncio.sleep(1.5)  # Wait for terminal to open and tmux to attach
+        # Open a visible Terminal window running tmux so the user can watch.
+        # macOS-only and purely cosmetic: the backend creates/attaches its own
+        # tmux session in connect(), so this isn't needed for the test to run
+        # (and `osascript` doesn't exist on Linux/Windows).
+        if sys.platform == "darwin":
+            print("Opening terminal window with tmux...")
+            subprocess.Popen(
+                [
+                    "osascript",
+                    "-e",
+                    """
+                tell application "Terminal"
+                    activate
+                    do script "tmux attach || tmux new-session"
+                end tell
+                """,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.terminal_opened = True
+            await asyncio.sleep(1.5)  # Wait for terminal to open and tmux to attach
 
         connected = await self.backend.connect()
         if not connected:
