@@ -424,6 +424,12 @@ class WezTermBackend(TerminalBackend):
         """Create new tab."""
         try:
             args = ["spawn"]
+            # Anchor to an existing pane's window: without --pane-id (and with no
+            # $WEZTERM_PANE), wezterm can't determine the target window when it
+            # isn't the focused app (the sidecar case) and errors out.
+            anchor = await self._get_active_pane()
+            if anchor:
+                args.extend(["--pane-id", str(anchor)])
             if command:
                 args.extend(["--", "/bin/sh", "-lc", command])
 
@@ -486,8 +492,14 @@ class WezTermBackend(TerminalBackend):
 
         try:
             if title:
-                # Set tab title
-                await self._wezterm("set-tab-title", title)
+                # Set tab title (target an explicit pane so it works when wezterm
+                # isn't the focused app — otherwise wezterm can't resolve a tab).
+                args = ["set-tab-title"]
+                pane_id = session_id or await self._get_active_pane()
+                if pane_id:
+                    args.extend(["--pane-id", str(pane_id)])
+                args.append(title)
+                await self._wezterm(*args)
                 results.append(f"Tab title set to '{title}'")
 
             if color:
@@ -506,7 +518,14 @@ class WezTermBackend(TerminalBackend):
     async def set_window_title(self, title: str) -> str:
         """Set the window title."""
         try:
-            await self._wezterm("set-window-title", title)
+            # Target an explicit pane's window; without --pane-id (and no
+            # $WEZTERM_PANE) wezterm can't resolve the window when unfocused.
+            args = ["set-window-title"]
+            pane_id = await self._get_active_pane()
+            if pane_id:
+                args.extend(["--pane-id", str(pane_id)])
+            args.append(title)
+            await self._wezterm(*args)
             return f"Window title set to '{title}'"
         except Exception as e:
             return f"Error: {e!s}"
