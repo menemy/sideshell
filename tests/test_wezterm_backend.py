@@ -65,7 +65,11 @@ class TestWezTermBackend:
             check = subprocess.run([wezterm_path, "cli", "list"], capture_output=True, text=True)
             if check.returncode != 0:
                 print("Launching WezTerm...")
-                subprocess.Popen(["open", "-a", "WezTerm"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if sys.platform == "darwin":
+                    subprocess.Popen(["open", "-a", "WezTerm"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                else:
+                    # Linux/Windows: launch the GUI directly (no macOS `open`)
+                    subprocess.Popen([wezterm_path, "start"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 self.wezterm_launched = True
                 await asyncio.sleep(2)  # Wait for WezTerm to start
 
@@ -98,9 +102,12 @@ class TestWezTermBackend:
         # Close WezTerm if we launched it
         if self.wezterm_launched:
             print("Closing WezTerm...")
-            subprocess.run(
-                ["osascript", "-e", 'quit app "WezTerm"'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
+            if sys.platform == "darwin":
+                subprocess.run(
+                    ["osascript", "-e", 'quit app "WezTerm"'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
+            else:
+                subprocess.run(["pkill", "-x", "wezterm-gui"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def _assert(self, condition: bool, message: str):
         """Assert helper with counting."""
