@@ -92,7 +92,9 @@ class GhosttyTmuxBackend(TmuxBackend):
     @staticmethod
     def _safe_id(value: str | None) -> bool:
         """True if `value` is safe to interpolate into an AppleScript string."""
-        return bool(value) and _SAFE_ID.match(value) is not None
+        if not value:
+            return False
+        return _SAFE_ID.match(value) is not None
 
     async def _osascript(self, script: str) -> str:
         """Run an AppleScript snippet via osascript (stdin) and return stdout."""

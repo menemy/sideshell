@@ -79,7 +79,8 @@ class MaQuakeBackend(TerminalBackend):
 
         try:
             response = await asyncio.get_running_loop().run_in_executor(None, _socket_rpc)
-            return json.loads(response.decode())
+            result: dict = json.loads(response.decode())
+            return result
         except json.JSONDecodeError as e:
             logger.error(f"maquake invalid JSON response: {e}")
             return {"ok": False, "error": f"Invalid JSON: {e}"}

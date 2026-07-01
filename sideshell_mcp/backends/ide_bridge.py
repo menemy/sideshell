@@ -32,7 +32,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -131,25 +131,27 @@ class IDEBridgeClient:
             logger.info(f"Connecting to {self.ide_name} via {transport} at {address}")
 
             if transport == "pipe":
-                self._reader, self._writer = await asyncio.wait_for(self._open_pipe(address), timeout=5.0)
+                reader, writer = await asyncio.wait_for(self._open_pipe(address), timeout=5.0)
             else:
-                self._reader, self._writer = await asyncio.wait_for(
+                reader, writer = await asyncio.wait_for(
                     asyncio.open_unix_connection(address),
                     timeout=5.0,
                 )
+            self._reader = reader
+            self._writer = writer
 
             # Send token handshake as first message
             handshake = {"type": "auth", "token": self._token or ""}
-            self._writer.write(json.dumps(handshake).encode() + b"\n")
-            await self._writer.drain()
+            writer.write(json.dumps(handshake).encode() + b"\n")
+            await writer.drain()
 
             # Read auth response
-            line = await asyncio.wait_for(self._reader.readline(), timeout=5.0)
+            line = await asyncio.wait_for(reader.readline(), timeout=5.0)
             resp = json.loads(line.decode())
             if not resp.get("ok"):
                 err = resp.get("error", "auth failed")
                 logger.warning(f"Auth rejected by {self.ide_name}: {err}")
-                self._writer.close()
+                writer.close()
                 return False
 
             self._connected = True
@@ -241,6 +243,8 @@ class IDEBridgeClient:
     ) -> Any:
         """Send a JSON-RPC request and wait for response."""
         await self.ensure_connection()
+        writer = self._writer
+        assert writer is not None  # guaranteed by ensure_connection()
 
         self._request_id += 1
         req_id = self._request_id
@@ -257,8 +261,8 @@ class IDEBridgeClient:
         self._pending[req_id] = future
 
         try:
-            self._writer.write(json.dumps(request).encode() + b"\n")  # type: ignore[union-attr]
-            await self._writer.drain()  # type: ignore[union-attr]
+            writer.write(json.dumps(request).encode() + b"\n")
+            await writer.drain()
             result = await asyncio.wait_for(future, timeout=timeout)
             return result
         except TimeoutError:
@@ -271,13 +275,13 @@ class IDEBridgeClient:
     # === High-level methods matching TerminalBackend API ===
 
     async def list_sessions(self) -> list[dict[str, Any]]:
-        return await self.call("list_sessions")
+        return cast("list[dict[str, Any]]", await self.call("list_sessions"))
 
     async def read_terminal(self, session_id: str | None = None, lines: int = 20) -> str:
-        return await self.call("read_terminal", {"session_id": session_id, "lines": lines})
+        return cast(str, await self.call("read_terminal", {"session_id": session_id, "lines": lines}))
 
     async def send_text(self, session_id: str | None = None, text: str = "") -> str:
-        return await self.call("send_text", {"session_id": session_id, "text": text})
+        return cast(str, await self.call("send_text", {"session_id": session_id, "text": text}))
 
     async def execute_command(
         self,
@@ -287,29 +291,35 @@ class IDEBridgeClient:
         timeout: int = 30,
         watch_for: str = "prompt",
     ) -> str:
-        return await self.call(
-            "execute_command",
-            {
-                "command": command,
-                "session_id": session_id,
-                "wait": wait,
-                "timeout": timeout,
-                "watch_for": watch_for,
-            },
-            timeout=float(timeout) + 5.0,
+        return cast(
+            str,
+            await self.call(
+                "execute_command",
+                {
+                    "command": command,
+                    "session_id": session_id,
+                    "wait": wait,
+                    "timeout": timeout,
+                    "watch_for": watch_for,
+                },
+                timeout=float(timeout) + 5.0,
+            ),
         )
 
     async def send_control(self, key: str, session_id: str | None = None) -> str:
-        return await self.call("send_control", {"session_id": session_id, "key": key})
+        return cast(str, await self.call("send_control", {"session_id": session_id, "key": key}))
 
     async def split_pane(
         self,
         direction: str,
         session_id: str | None = None,
     ) -> dict[str, Any]:
-        return await self.call(
-            "split_pane",
-            {"session_id": session_id, "direction": direction},
+        return cast(
+            "dict[str, Any]",
+            await self.call(
+                "split_pane",
+                {"session_id": session_id, "direction": direction},
+            ),
         )
 
     async def create_tab(
@@ -317,29 +327,29 @@ class IDEBridgeClient:
         profile: str | None = None,
         command: str | None = None,
     ) -> dict[str, Any]:
-        return await self.call("create_tab", {"profile": profile, "command": command})
+        return cast("dict[str, Any]", await self.call("create_tab", {"profile": profile, "command": command}))
 
     async def create_window(
         self,
         profile: str | None = None,
         command: str | None = None,
     ) -> dict[str, Any]:
-        return await self.call("create_window", {"profile": profile, "command": command})
+        return cast("dict[str, Any]", await self.call("create_window", {"profile": profile, "command": command}))
 
     async def focus_session(self, session_id: str) -> str:
-        return await self.call("focus_session", {"session_id": session_id})
+        return cast(str, await self.call("focus_session", {"session_id": session_id}))
 
     async def close_session(self, session_id: str | None = None) -> str:
-        return await self.call("close_session", {"session_id": session_id})
+        return cast(str, await self.call("close_session", {"session_id": session_id}))
 
     async def clear_terminal(self, session_id: str | None = None) -> str:
-        return await self.call("clear_terminal", {"session_id": session_id})
+        return cast(str, await self.call("clear_terminal", {"session_id": session_id}))
 
     async def get_terminal_state(
         self,
         session_id: str | None = None,
     ) -> dict[str, Any]:
-        return await self.call("get_terminal_state", {"session_id": session_id})
+        return cast("dict[str, Any]", await self.call("get_terminal_state", {"session_id": session_id}))
 
     async def set_appearance(
         self,
@@ -348,22 +358,25 @@ class IDEBridgeClient:
         color: str | None = None,
         badge: str | None = None,
     ) -> str:
-        return await self.call(
-            "set_appearance",
-            {"session_id": session_id, "title": title, "color": color, "badge": badge},
+        return cast(
+            str,
+            await self.call(
+                "set_appearance",
+                {"session_id": session_id, "title": title, "color": color, "badge": badge},
+            ),
         )
 
     async def get_active_session(self) -> str | None:
         result = await self.call("get_active_session")
         if isinstance(result, dict):
             return result.get("session_id")
-        return result
+        return cast("str | None", result)
 
     async def is_ai_session(self, session_id: str) -> bool:
-        return await self.call("is_ai_session", {"session_id": session_id})
+        return cast(bool, await self.call("is_ai_session", {"session_id": session_id}))
 
     async def return_focus(self, session_id: str | None = None) -> str:
-        return await self.call("return_focus", {"session_id": session_id})
+        return cast(str, await self.call("return_focus", {"session_id": session_id}))
 
 
 def write_socket_file(

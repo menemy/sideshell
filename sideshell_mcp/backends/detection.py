@@ -557,7 +557,7 @@ def _instantiate_backend(backend_type: BackendType) -> TerminalBackend:
                 "iTerm2 backend requires the iterm2 package. Install with: pip install sideshell-mcp[iterm2]"
             ) from None
 
-        backend = ITermBackend()
+        backend: TerminalBackend = ITermBackend()
         if not backend.is_available:
             raise ValueError(
                 "iTerm2 backend requested but not available. "

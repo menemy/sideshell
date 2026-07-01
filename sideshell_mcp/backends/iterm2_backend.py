@@ -239,7 +239,7 @@ class ITermBackend(TerminalBackend):
                 }
                 return json.dumps(info, indent=2)
 
-            state = {
+            state: dict[str, Any] = {
                 "windows": [],
                 "total_sessions": 0,
                 "active_window": None,
@@ -681,6 +681,7 @@ class ITermBackend(TerminalBackend):
             tab = await self._find_tab_for_session(session.session_id)
             if tab and len(tab.sessions) == 1:
                 window = None
+                assert self.app is not None  # session lookup above requires a live app
                 for w in self.app.windows:
                     if tab in w.tabs:
                         window = w
@@ -831,6 +832,8 @@ class ITermBackend(TerminalBackend):
         """Move tab to its own window."""
         try:
             await self.ensure_connection()
+            if self.app is None:
+                raise AttributeError("Not connected to iTerm2")
             session = await self._get_session_object(session_id)
             if not session:
                 return "Session not found"
@@ -865,6 +868,8 @@ class ITermBackend(TerminalBackend):
         """
         try:
             await self.ensure_connection()
+            if self.app is None:
+                raise AttributeError("Not connected to iTerm2")
             iterm2 = self._get_iterm2()
 
             # Find window for session
@@ -897,6 +902,8 @@ class ITermBackend(TerminalBackend):
         """Get current window position and size."""
         try:
             await self.ensure_connection()
+            if self.app is None:
+                raise AttributeError("Not connected to iTerm2")
 
             if session_id:
                 session = await self._get_session_object(session_id)
@@ -1019,6 +1026,8 @@ class ITermBackend(TerminalBackend):
         elif command == "fullscreen":
             try:
                 await self.ensure_connection()
+                if self.app is None:
+                    raise AttributeError("Not connected to iTerm2")
                 if session_id:
                     session = await self._get_session_object(session_id)
                     if not session:

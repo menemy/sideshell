@@ -11,7 +11,7 @@ import argparse
 import asyncio
 import logging
 import sys
-from typing import Any
+from typing import Any, cast
 
 from mcp.server import Server
 from mcp.server.lowlevel.helper_types import ReadResourceContents
@@ -22,9 +22,11 @@ from mcp.types import (
     ImageContent,
     Resource,
     ResourceTemplate,
+    ServerCapabilities,
     TextContent,
     Tool,
 )
+from pydantic import AnyUrl
 
 from .backends import (
     BackendType,
@@ -60,13 +62,13 @@ class SideshellServer:
             """List available resources."""
             return [
                 Resource(
-                    uri="sideshell://sessions",
+                    uri=AnyUrl("sideshell://sessions"),
                     name="Terminal Sessions",
                     description="List of all terminal sessions with metadata",
                     mimeType="application/json",
                 ),
                 Resource(
-                    uri="sideshell://capabilities",
+                    uri=AnyUrl("sideshell://capabilities"),
                     name="Backend Capabilities",
                     description="Current backend features and limitations",
                     mimeType="application/json",
@@ -582,10 +584,13 @@ class SideshellServer:
                     InitializationOptions(
                         server_name="sideshell",
                         server_version="1.0.0",
-                        capabilities={
-                            "tools": {},
-                            "resources": {},
-                        },
+                        capabilities=cast(
+                            ServerCapabilities,
+                            {
+                                "tools": {},
+                                "resources": {},
+                            },
+                        ),
                     ),
                 )
         except* Exception as eg:

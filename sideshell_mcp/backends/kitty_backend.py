@@ -141,7 +141,8 @@ class KittyBackend(TerminalBackend):
     async def _get_windows_json(self) -> list:
         """Get all windows as JSON."""
         output = await self._kitten("ls")
-        return json.loads(output)
+        windows: list = json.loads(output)
+        return windows
 
     async def _get_active_window_id(self) -> int | None:
         """Get the active window ID."""
@@ -157,7 +158,8 @@ class KittyBackend(TerminalBackend):
                     if tab.get("is_focused"):
                         for window in tab.get("windows", []):
                             if window.get("is_focused"):
-                                return window.get("id")
+                                focused_id: int | None = window.get("id")
+                                return focused_id
         except Exception:
             pass
         return None

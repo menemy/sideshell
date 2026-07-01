@@ -8,7 +8,7 @@ import logging
 import os
 import shutil
 import uuid
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from .base import (
     ControlKey,
@@ -272,7 +272,7 @@ class TmuxBackend(TerminalBackend):
                 "#{session_name}|#{window_index}|#{window_name}|#{pane_index}|#{pane_id}|#{pane_current_command}|#{pane_current_path}|#{pane_width}|#{pane_height}",
             )
 
-            state = {
+            state: dict[str, Any] = {
                 "sessions": [],
                 "total_panes": 0,
                 "active_session": None,
@@ -536,8 +536,7 @@ class TmuxBackend(TerminalBackend):
         direction_text = "horizontally" if direction == SplitDirection.HORIZONTAL else "vertically"
         return f"Split {direction_text}. New session: {new_pane_id}"
 
-    @staticmethod
-    def _new_session_name() -> str:
+    def _new_session_name(self) -> str:
         """Generate a unique tmux session name (PID + random suffix)."""
         return f"sideshell-{os.getpid()}-{uuid.uuid4().hex[:6]}"
 

@@ -12,6 +12,7 @@ async def monitor_output(session_id: str, timeout: float) -> dict:
     """Monitor session for output changes."""
     connection = await iterm2.Connection.async_create()
     app = await iterm2.async_get_app(connection)
+    assert app is not None  # async_get_app creates the app object if needed
 
     # Find session
     target_session = None
@@ -74,6 +75,7 @@ async def monitor_silence(session_id: str, timeout: float, threshold: float = 2.
     """Monitor session for silence."""
     connection = await iterm2.Connection.async_create()
     app = await iterm2.async_get_app(connection)
+    assert app is not None  # async_get_app creates the app object if needed
 
     # Find session
     target_session = None
