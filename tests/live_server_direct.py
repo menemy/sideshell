@@ -5,7 +5,7 @@ Direct server tests for vibe-sideshell.
 Tests run in an isolated environment that gets cleaned up after.
 
 Usage:
-    uv run python tests/test_server_direct.py [backend]
+    uv run python tests/live_server_direct.py [backend]
 
     backend: iterm2, tmux (default: iterm2)
 
