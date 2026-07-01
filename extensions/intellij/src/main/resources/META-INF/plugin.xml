@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.sideshell.terminal</id>
     <name>sideshell Terminal Control</name>
-    <vendor url="https://github.com/anthropics/sideshell">sideshell</vendor>
+    <vendor url="https://github.com/menemy/sideshell">sideshell</vendor>
 
     <description><![CDATA[
     Exposes JetBrains IDE terminal control for AI agents via sideshell MCP server.
@@ -12,6 +12,13 @@
     Works with all JetBrains IDEs: IntelliJ IDEA, PyCharm, WebStorm, GoLand,
     RustRover, PhpStorm, Android Studio, etc.
     ]]></description>
+
+    <change-notes><![CDATA[
+    1.0.0 — initial release: token-authenticated Unix-socket bridge with
+    explicit in-IDE approval; create/split/focus/close terminal tabs; execute
+    with wait + output capture; supports both the Classic and Reworked
+    terminal engines (2025.3–2026.1).
+    ]]></change-notes>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.plugins.terminal</depends>

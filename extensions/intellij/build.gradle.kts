@@ -39,7 +39,7 @@ intellijPlatform {
         """.trimIndent()
         vendor {
             name = "sideshell"
-            url = "https://github.com/anthropics/sideshell"
+            url = "https://github.com/menemy/sideshell"
         }
         ideaVersion {
             sinceBuild = "253"

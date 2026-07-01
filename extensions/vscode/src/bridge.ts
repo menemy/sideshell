@@ -336,7 +336,7 @@ export class SideshellBridge {
                 pid: process.pid,
                 token: this._token,
                 ide: 'vscode',
-                version: '0.3.0',
+                version: '1.0.0',
             });
             fs.writeFileSync(this.portFilePath, data, { mode: 0o600 });
         } catch (e) {

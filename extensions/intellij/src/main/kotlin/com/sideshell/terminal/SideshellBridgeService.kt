@@ -306,7 +306,7 @@ class SideshellBridgeService {
                 "pid" to ProcessHandle.current().pid(),
                 "token" to token,
                 "ide" to "intellij",
-                "version" to "0.2.0",
+                "version" to "1.0.0",
             ))
             file.writeText(data)
             file.setReadable(false, false)

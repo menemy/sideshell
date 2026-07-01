@@ -4,6 +4,8 @@
   "description": "Exposes VS Code terminal control for AI agents via sideshell MCP server",
   "version": "1.0.0",
   "publisher": "sideshell",
+  "icon": "icon.png",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/menemy/sideshell"

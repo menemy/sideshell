@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#16213e"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+
+  <!-- Single terminal window -->
+  <rect x="36" y="56" width="440" height="400" rx="20" fill="#0d1117" stroke="#30363d" stroke-width="2.5"/>
+
+  <!-- Title bar -->
+  <rect x="36" y="56" width="440" height="42" rx="20" fill="#161b22"/>
+  <rect x="36" y="78" width="440" height="20" fill="#161b22"/>
+
+  <!-- Traffic lights -->
+  <circle cx="68" cy="77" r="7" fill="#ff5f57"/>
+  <circle cx="90" cy="77" r="7" fill="#febc2e"/>
+  <circle cx="112" cy="77" r="7" fill="#28c840"/>
+
+  <!-- === SPLIT DIVIDER === -->
+  <line x1="256" y1="102" x2="256" y2="450" stroke="#30363d" stroke-width="3"/>
+
+  <!-- === LEFT: AI === -->
+  <text x="148" y="160" font-family="SF Mono, Menlo, Consolas, monospace" font-size="42" font-weight="800" fill="#7b68ee" text-anchor="middle">AI</text>
+
+  <!-- AI thinking dots -->
+  <circle cx="108" cy="210" r="7" fill="#7b68ee" opacity="0.9">
+    <animate attributeName="opacity" values="0.9;0.3;0.9" dur="1.5s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="140" cy="210" r="7" fill="#a78bfa" opacity="0.6">
+    <animate attributeName="opacity" values="0.6;0.15;0.6" dur="1.5s" begin="0.3s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="172" cy="210" r="7" fill="#7b68ee" opacity="0.4">
+    <animate attributeName="opacity" values="0.4;0.1;0.4" dur="1.5s" begin="0.6s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- AI output lines -->
+  <rect x="68" y="244" width="160" height="5" rx="2.5" fill="#7b68ee" opacity="0.3"/>
+  <rect x="68" y="264" width="120" height="5" rx="2.5" fill="#7b68ee" opacity="0.22"/>
+  <rect x="68" y="284" width="148" height="5" rx="2.5" fill="#7b68ee" opacity="0.3"/>
+  <rect x="68" y="304" width="90" height="5" rx="2.5" fill="#7b68ee" opacity="0.18"/>
+  <rect x="68" y="324" width="155" height="5" rx="2.5" fill="#7b68ee" opacity="0.25"/>
+  <rect x="68" y="344" width="110" height="5" rx="2.5" fill="#7b68ee" opacity="0.2"/>
+
+  <!-- Arrow pointing right -->
+  <path d="M 130 410 L 170 410 L 158 396 M 170 410 L 158 424" stroke="#7b68ee" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.55"/>
+
+  <!-- === RIGHT: SH === -->
+  <text x="364" y="160" font-family="SF Mono, Menlo, Consolas, monospace" font-size="42" font-weight="800" fill="#00d2ff" text-anchor="middle">SH</text>
+
+  <!-- Shell prompt 1 -->
+  <text x="280" y="214" font-family="SF Mono, Menlo, Consolas, monospace" font-size="26" font-weight="700" fill="#00d2ff">$</text>
+  <text x="306" y="214" font-family="SF Mono, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#e6edf3">npm test</text>
+
+  <!-- Output lines -->
+  <rect x="280" y="234" width="155" height="4" rx="2" fill="#28c840" opacity="0.45"/>
+  <rect x="280" y="252" width="120" height="4" rx="2" fill="#30363d" opacity="0.5"/>
+  <rect x="280" y="270" width="140" height="4" rx="2" fill="#28c840" opacity="0.4"/>
+
+  <!-- Shell prompt 2 -->
+  <text x="280" y="316" font-family="SF Mono, Menlo, Consolas, monospace" font-size="26" font-weight="700" fill="#00d2ff">$</text>
+  <text x="306" y="316" font-family="SF Mono, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#e6edf3">git push</text>
+
+  <!-- Output -->
+  <rect x="280" y="336" width="130" height="4" rx="2" fill="#30363d" opacity="0.45"/>
+
+  <!-- Shell prompt 3 + blinking cursor -->
+  <text x="280" y="400" font-family="SF Mono, Menlo, Consolas, monospace" font-size="26" font-weight="700" fill="#00d2ff">$</text>
+  <rect x="306" y="380" width="16" height="26" rx="3" fill="#00d2ff" opacity="0.8">
+    <animate attributeName="opacity" values="0.8;0.2;0.8" dur="1.2s" repeatCount="indefinite"/>
+  </rect>
+</svg>

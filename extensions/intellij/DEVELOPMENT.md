@@ -5,10 +5,10 @@
 ```bash
 # Build (requires JDK 17+, uses IntelliJ's bundled JDK 21)
 cd extensions/intellij
-JAVA_HOME="/Users/maksimnagaev/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home" ./gradlew buildPlugin
+JAVA_HOME="$HOME/Applications/IntelliJ IDEA.app/Contents/jbr/Contents/Home" ./gradlew buildPlugin
 
 # Install (ALWAYS quote paths — they contain spaces!)
-PLUGIN_BASE="/Users/maksimnagaev/Library/Application Support/JetBrains/IntelliJIdea2025.3/plugins"
+PLUGIN_BASE="$HOME/Library/Application Support/JetBrains/IntelliJIdea2025.3/plugins"
 rm -rf "${PLUGIN_BASE}/sideshell-terminal"
 ZIP_FILE="$(ls build/distributions/*.zip)"
 unzip -q -o "$ZIP_FILE" -d "$PLUGIN_BASE"

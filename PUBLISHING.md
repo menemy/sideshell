@@ -229,9 +229,10 @@ Keep versions in sync across components:
 | Component | Version location | Current |
 |-----------|-----------------|---------|
 | Python | `pyproject.toml` → `version` | 1.0.0 |
-| VSCode | `extensions/vscode/package.json` → `version` | 0.2.0 |
-| VSCode | `extensions/vscode/src/bridge.ts` → `version` (port file) | 0.2.0 |
-| IntelliJ | `extensions/intellij/build.gradle.kts` → `version` | 0.1.0 |
+| VSCode | `extensions/vscode/package.json` → `version` | 1.0.0 |
+| VSCode | `extensions/vscode/src/bridge.ts` → `version` (port file) | 1.0.0 |
+| IntelliJ | `extensions/intellij/build.gradle.kts` → `version` | 1.0.0 |
+| IntelliJ | `SideshellBridgeService.kt` → `version` (port file) | 1.0.0 |
 
 Suggested flow:
 1. Bump versions in all files
